@@ -1,0 +1,47 @@
+{
+  "id": "wf_00000000000000000000000001",
+  "objective_id": "obj_00000000000000000000000001",
+  "created_at_ns": 17,
+  "epoch": 3,
+  "tasks": [
+    {
+      "id": "task_00000000000000000000000001",
+      "workflow_id": "wf_00000000000000000000000001",
+      "task_type": "AtomicExecution",
+      "capability": "fixture",
+      "operation": "publish",
+      "parameters": "left\n",
+      "dependencies": [],
+      "resource_requirements": [],
+      "timeout_ms": 1000,
+      "is_idempotent": false
+    },
+    {
+      "id": "task_00000000000000000000000002",
+      "workflow_id": "wf_00000000000000000000000001",
+      "task_type": "AtomicExecution",
+      "capability": "fixture",
+      "operation": "publish",
+      "parameters": "right\n",
+      "dependencies": [],
+      "resource_requirements": [],
+      "timeout_ms": 1000,
+      "is_idempotent": true
+    },
+    {
+      "id": "task_00000000000000000000000003",
+      "workflow_id": "wf_00000000000000000000000001",
+      "task_type": "AtomicExecution",
+      "capability": "fixture",
+      "operation": "concatenate",
+      "parameters": null,
+      "dependencies": [
+        "task_00000000000000000000000001",
+        "task_00000000000000000000000002"
+      ],
+      "resource_requirements": [],
+      "timeout_ms": 1000,
+      "is_idempotent": false
+    }
+  ]
+}

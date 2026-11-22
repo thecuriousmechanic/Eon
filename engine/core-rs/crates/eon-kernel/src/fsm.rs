@@ -7,13 +7,15 @@ use eon_primitives::{EonError, EonResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TaskState {
-    Pending,
-    Ready,
-    Running,
-    Completed,
-    Failed,
-    Compensating,
-    Compensated,
+    Pending = 0,
+    Ready = 1,
+    Running = 2,
+    Completed = 3,
+    Failed = 4,
+    Compensating = 5,
+    Compensated = 6,
+    /// The side effect may have occurred. Wait for reconciliation instead of running it again.
+    UncertainFailure = 7,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -24,9 +26,15 @@ pub enum TaskEvent {
     Fail,
     Rollback,
     CompensationDone,
+    /// Execution was interrupted or its outcome could not be verified.
+    OutcomeUncertain,
+    /// The reconciler has already rolled back the uncertain effect.
+    ReconciledRollback,
+    /// The reconciler has established that repeating the task is idempotent.
+    RequeueIdempotent,
 }
 
-pub const ALL_STATES: [TaskState; 7] = [
+pub const ALL_STATES: [TaskState; 8] = [
     TaskState::Pending,
     TaskState::Ready,
     TaskState::Running,
@@ -34,15 +42,19 @@ pub const ALL_STATES: [TaskState; 7] = [
     TaskState::Failed,
     TaskState::Compensating,
     TaskState::Compensated,
+    TaskState::UncertainFailure,
 ];
 
-pub const ALL_EVENTS: [TaskEvent; 6] = [
+pub const ALL_EVENTS: [TaskEvent; 9] = [
     TaskEvent::DependenciesMet,
     TaskEvent::Start,
     TaskEvent::Succeed,
     TaskEvent::Fail,
     TaskEvent::Rollback,
     TaskEvent::CompensationDone,
+    TaskEvent::OutcomeUncertain,
+    TaskEvent::ReconciledRollback,
+    TaskEvent::RequeueIdempotent,
 ];
 
 /// The complete legal transition table. Anything not listed here is rejected.
@@ -54,6 +66,9 @@ pub fn next_state(from: TaskState, event: TaskEvent) -> EonResult<TaskState> {
         (S::Ready, E::Start) => S::Running,
         (S::Running, E::Succeed) => S::Completed,
         (S::Running, E::Fail) => S::Failed,
+        (S::Running, E::OutcomeUncertain) => S::UncertainFailure,
+        (S::UncertainFailure, E::ReconciledRollback) => S::Failed,
+        (S::UncertainFailure, E::RequeueIdempotent) => S::Ready,
         (S::Failed, E::Rollback) | (S::Completed, E::Rollback) => S::Compensating,
         (S::Compensating, E::CompensationDone) => S::Compensated,
         _ => {
@@ -88,13 +103,31 @@ mod tests {
     }
 
     #[test]
-    fn the_table_has_exactly_seven_legal_edges() {
-        let legal: Vec<(TaskState, TaskEvent)> = ALL_STATES
-            .iter()
-            .flat_map(|&s| ALL_EVENTS.iter().map(move |&e| (s, e)))
-            .filter(|&(s, e)| next_state(s, e).is_ok())
-            .collect();
-        assert_eq!(legal.len(), 7, "legal edges: {legal:?}");
+    fn only_listed_edges_are_legal_and_reach_the_expected_state() {
+        use TaskEvent as E;
+        use TaskState as S;
+        let legal = [
+            (S::Pending, E::DependenciesMet, S::Ready),
+            (S::Ready, E::Start, S::Running),
+            (S::Running, E::Succeed, S::Completed),
+            (S::Running, E::Fail, S::Failed),
+            (S::Running, E::OutcomeUncertain, S::UncertainFailure),
+            (S::UncertainFailure, E::ReconciledRollback, S::Failed),
+            (S::UncertainFailure, E::RequeueIdempotent, S::Ready),
+            (S::Failed, E::Rollback, S::Compensating),
+            (S::Completed, E::Rollback, S::Compensating),
+            (S::Compensating, E::CompensationDone, S::Compensated),
+        ];
+        for state in ALL_STATES {
+            for event in ALL_EVENTS {
+                let expected = legal.iter().find(|&&(s, e, _)| (s, e) == (state, event));
+                assert_eq!(
+                    next_state(state, event).ok(),
+                    expected.map(|&(_, _, to)| to),
+                    "{state:?} on {event:?}"
+                );
+            }
+        }
     }
 
     #[test]

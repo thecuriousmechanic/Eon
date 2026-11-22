@@ -1,9 +1,8 @@
 //! Durable kernel events: encodes `KernelEvent` into journal payloads and writes them through the group-commit
 //! journal (docs/implementation/01, sections 3.1 and 4).
 //!
-//! Payload format is one line of tab-separated fields: `T<TAB>task<TAB>from<TAB>to`, or
-//! `S<TAB>parent<TAB>child,child,...`. The format is versioned by its leading tag so future event kinds can be
-//! added without breaking replay.
+//! Tagged tab-separated payloads: task transition (`T`), splice (`S`), epoch writes (`E`),
+//! workflow submission (`W`), and epoch invalidation (`I`).
 
 use std::collections::BTreeMap;
 
@@ -22,6 +21,7 @@ fn state_name(state: TaskState) -> &'static str {
         TaskState::Failed => "failed",
         TaskState::Compensating => "compensating",
         TaskState::Compensated => "compensated",
+        TaskState::UncertainFailure => "uncertain_failure",
     }
 }
 
@@ -34,6 +34,7 @@ fn parse_state(name: &str) -> EonResult<TaskState> {
         "failed" => TaskState::Failed,
         "compensating" => TaskState::Compensating,
         "compensated" => TaskState::Compensated,
+        "uncertain_failure" => TaskState::UncertainFailure,
         other => return Err(corrupt(format!("unknown state '{other}'"))),
     })
 }
@@ -76,6 +77,16 @@ fn unescape(text: &str) -> EonResult<String> {
 
 pub fn encode(event: &KernelEvent) -> Vec<u8> {
     let line = match event {
+        KernelEvent::WorkflowSubmitted { workflow, epoch, digest, tasks } => {
+            let mut fields = vec!["W".to_owned(), workflow.to_string(), epoch.to_string(),
+                blake3::Hash::from_bytes(*digest).to_hex().to_string()];
+            for (id, idempotent) in tasks {
+                fields.push(id.to_string());
+                fields.push(u8::from(*idempotent).to_string());
+            }
+            fields.join("\t")
+        }
+        KernelEvent::EpochInvalidated { workflow, epoch } => format!("I\t{workflow}\t{epoch}"),
         KernelEvent::TaskTransition { task, from, to } => {
             format!("T\t{task}\t{}\t{}", state_name(*from), state_name(*to))
         }
@@ -99,6 +110,38 @@ pub fn decode(bytes: &[u8]) -> EonResult<KernelEvent> {
     let text = std::str::from_utf8(bytes).map_err(|e| corrupt(e.to_string()))?;
     let fields: Vec<&str> = text.split('\t').collect();
     match fields.as_slice() {
+        ["W", workflow, epoch, digest, rest @ ..] => {
+            if digest.bytes().any(|b| b.is_ascii_uppercase()) {
+                return Err(corrupt("non-canonical workflow digest".into()));
+            }
+            let digest = blake3::Hash::from_hex(digest).map_err(|e| corrupt(e.to_string()))?;
+            let (pairs, leftover) = rest.as_chunks::<2>();
+            if !leftover.is_empty() {
+                return Err(corrupt("submission has an unpaired task".into()));
+            }
+            let mut tasks = BTreeMap::new();
+            for pair in pairs {
+                let id = pair[0].parse::<TaskId>().map_err(|e| corrupt(e.to_string()))?;
+                let idempotent = match pair[1] {
+                    "1" => true,
+                    "0" => false,
+                    _ => return Err(corrupt("invalid idempotency flag".into())),
+                };
+                if tasks.insert(id, idempotent).is_some() {
+                    return Err(corrupt("duplicate task in submission".into()));
+                }
+            }
+            Ok(KernelEvent::WorkflowSubmitted {
+                workflow: workflow.parse().map_err(|e: EonError| corrupt(e.to_string()))?,
+                epoch: epoch.parse::<u64>().map_err(|e| corrupt(e.to_string()))?,
+                digest: *digest.as_bytes(),
+                tasks,
+            })
+        }
+        ["I", workflow, epoch] => Ok(KernelEvent::EpochInvalidated {
+            workflow: workflow.parse().map_err(|e: EonError| corrupt(e.to_string()))?,
+            epoch: epoch.parse::<u64>().map_err(|e| corrupt(e.to_string()))?,
+        }),
         ["T", task, from, to] => Ok(KernelEvent::TaskTransition {
             task: task.parse::<TaskId>().map_err(|e| corrupt(e.to_string()))?,
             from: parse_state(from)?,
@@ -148,6 +191,14 @@ impl<'a> JournalSink<'a> {
 
 impl EventSink for JournalSink<'_> {
     fn record(&mut self, event: KernelEvent) -> EonResult<()> {
+        // Callers can construct an event without going through SharedState::commit_recorded.
+        if let KernelEvent::EpochCommitted { writes, .. } = &event {
+            for field in writes.keys().chain(writes.values()) {
+                if eon_foundation::scrubber::scrub(field) != *field {
+                    return Err(EonError::SecurityViolation("unscrubbed epoch field".into()));
+                }
+            }
+        }
         self.journal.append_durable(encode(&event)).map(|_| ())
     }
 }
@@ -157,8 +208,26 @@ mod tests {
     use eon_foundation::journal::replay;
 
     use super::*;
-    use crate::events::{complete_recorded, splice_recorded};
+    use crate::events::{complete_recorded, splice_recorded, transition_recorded};
+    use crate::fsm::TaskEvent;
     use crate::workflow::{Task, Workflow};
+
+    #[test]
+    fn direct_epoch_records_cannot_bypass_field_scrubbing() {
+        let dir = tempfile::tempdir().unwrap();
+        let journal = GroupCommitJournal::spawn(dir.path(), 8).unwrap();
+        let mut sink = JournalSink::new(&journal);
+        let fixture = ["ghp_", "fixture"].concat();
+        for (key, value) in [(&fixture[..], "value"), ("key", &fixture[..])] {
+            let event = KernelEvent::EpochCommitted {
+                id: 1,
+                writes: BTreeMap::from([(key.to_owned(), value.to_owned())]),
+            };
+            assert!(matches!(sink.record(event), Err(EonError::SecurityViolation(_))));
+        }
+        drop(journal);
+        assert!(replay(dir.path()).unwrap().is_empty());
+    }
 
     #[test]
     fn every_event_kind_round_trips_through_its_encoding() {
@@ -178,6 +247,58 @@ mod tests {
         ];
         for event in events {
             assert_eq!(decode(&encode(&event)).unwrap(), event);
+        }
+    }
+
+    #[test]
+    fn transition_state_names_and_discriminants_are_stable() {
+        use TaskState::*;
+        for (state, name, discriminant) in [
+            (Pending, "pending", 0),
+            (Ready, "ready", 1),
+            (Running, "running", 2),
+            (Completed, "completed", 3),
+            (Failed, "failed", 4),
+            (Compensating, "compensating", 5),
+            (Compensated, "compensated", 6),
+            (UncertainFailure, "uncertain_failure", 7),
+        ] {
+            assert_eq!(state as usize, discriminant);
+            assert_eq!(state_name(state), name);
+            assert_eq!(parse_state(name).unwrap(), state);
+        }
+
+        // Existing workflow journals use this shortcut rather than the FSM's intermediate states.
+        let task = TaskId::new();
+        let legacy = format!("T\t{task}\tpending\tcompleted");
+        let event = KernelEvent::TaskTransition { task, from: Pending, to: Completed };
+        assert_eq!(decode(legacy.as_bytes()).unwrap(), event);
+        assert_eq!(encode(&event), legacy.as_bytes());
+    }
+
+    #[test]
+    fn durable_replay_stops_at_the_unverified_outcome() {
+        use TaskState::*;
+        let task = TaskId::new();
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let journal = GroupCommitJournal::spawn(dir.path(), 8).unwrap();
+            let mut sink = JournalSink::new(&journal);
+            let mut state = Pending;
+            for event in [TaskEvent::DependenciesMet, TaskEvent::Start, TaskEvent::OutcomeUncertain] {
+                transition_recorded(&mut state, &task, event, &mut sink).unwrap();
+            }
+            assert!(transition_recorded(&mut state, &task, TaskEvent::Start, &mut sink).is_err());
+        }
+
+        let frames = replay(dir.path()).unwrap();
+        let expected = [(Pending, Ready), (Ready, Running), (Running, UncertainFailure)];
+        assert_eq!(frames.len(), expected.len());
+        for (frame, (from, to)) in frames.iter().zip(expected) {
+            assert_eq!(
+                decode(&frame.payload).unwrap(),
+                KernelEvent::TaskTransition { task: task.clone(), from, to }
+            );
         }
     }
 

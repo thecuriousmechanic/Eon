@@ -6,10 +6,19 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-eon-cyber = { path = "../eon-cyber" }
+eon-cyber = { path = "../eon-cyber", default-features = false }
 eon-kernel = { path = "../eon-kernel" }
 eon-primitives = { path = "../eon-primitives" }
 eframe = "0.37.0"
 egui = "0.37.0"
 pollster = "1.0.2"
 wgpu = "30.0.2"
+image = { version = "0.25.10", default-features = false, features = ["jpeg"] }
+
+# The live viewer needs strict, bounded parsing and race-free acquisition. These
+# are the same parser/grammars and syscall bindings already in the locked build.
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+tree-sitter = "0.27"
+tree-sitter-python = "0.25"
+tree-sitter-rust = "0.24"

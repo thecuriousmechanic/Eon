@@ -1,7 +1,7 @@
-# ADR-0004: Information Particle Manipulation & Cyber Mastery (Defense & Offense)
+# ADR-0004: Information Particle Manipulation and Defensive Analysis
 
 ## Status
-Accepted
+Accepted for program analysis and defense. [Roadmap Phase 7](../ROADMAP_AND_IMPLEMENTATION_PLAN.md#phase-7-program-analysis-and-defensive-security) supersedes the original offensive research scope.
 
 ## Context
 In *That Time I Got Reincarnated as a Slime*, Ciel's ultimate authority is her ability to manipulate Information Particles (*Jōhō Ryūshi*)—the fundamental units of reality. This enables instantaneous restructuring of skills, barriers, and matter.
@@ -19,14 +19,10 @@ Standard AI coding assistants operate as shallow text generators. They guess cod
    - Automated static and dynamic taint analysis for memory safety (CWE-119, use-after-free), injection attacks, and cryptographic timing vulnerabilities.
    - Automated synthesis of mathematically sound patches.
    - Kernel eBPF / ETW telemetry to detect runtime syscall anomalies and unauthorized memory executions.
-4. **Cyber Offense & Vulnerability Research**:
-   - Deep multi-architecture disassembly (ELF, PE, Mach-O, DEX) with Control Flow Graph (CFG) reconstruction.
-   - Symbolic execution (Z3 engine) and coverage-guided fuzzing harnesses.
-   - Raw network frame crafting and protocol robustness testing.
-   - All exploit simulations run strictly in air-gapped, ephemeral execution sandboxes.
+4. **Dependency and containment verification**:
+   - Assess local package inventories against offline advisories and distinguish known affected versions from unresolved coverage.
+   - Verify that untrusted tools cannot reach host resources, and that failures leave no raw test credentials in the journal.
 
 ## Consequences
-- EON transcends conventional chatbot coding; it functions as a world-class systems engineer, security auditor, and cyber operator.
-- Security vulnerabilities are remediated autonomously before code commits.
-- System integrity is defended at both the source and binary levels.
-
+- A finding is not a verified fix. A proposed remediation must pass a regression test before it is reported as successful.
+- Security checks use authorized source, local dependency records or isolated fixtures. They do not execute attacks against systems.

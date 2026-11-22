@@ -1,0 +1,35 @@
+{
+  "name": "eon-paused-locations",
+  "displayName": "EON Paused Project Locations",
+  "description": "Show selected project locations or explicitly enabled native allocation counts at a local pause.",
+  "publisher": "eon",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": ["Debuggers"],
+  "extensionKind": ["ui"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": false },
+    "virtualWorkspaces": { "supported": false }
+  },
+  "main": "./extension.js",
+  "activationEvents": ["onCommand:eon.showPausedProjectLocations", "onCommand:eon.showProjectAllocationCounts", "onDebugResolve:lldb-dap"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "eon.showPausedProjectLocations",
+        "title": "Show Paused Project Locations",
+        "category": "EON",
+        "enablement": "isLinux && isWorkspaceTrusted && !remoteName && debugState == stopped"
+      },
+      {
+        "command": "eon.showProjectAllocationCounts",
+        "title": "Show Project Allocation Counts",
+        "category": "EON",
+        "enablement": "isLinux && isWorkspaceTrusted && !remoteName && debugType == lldb-dap && debugState == stopped"
+      }
+    ]
+  }
+}

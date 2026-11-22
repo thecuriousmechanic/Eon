@@ -1,0 +1,63 @@
+// Keep the original Kotlin/Swift namespace when evolving the contract.
+namespace eon_uniffi {
+    [Throws=BridgeError]
+    string select_model_profile(double memory_gb);
+    // One in-memory diagnostic task. No caller-supplied workflow, capability or resource handle.
+    [Throws=MobileWorkflowError]
+    MobileWorkflowReceipt run_profile_workflow(double memory_gb);
+    u32 endpoint_silence_ms(Completeness completeness);
+    [Throws=BridgeError]
+    string generate_ulid(string prefix);
+    i64 get_monotonic_time_nanos();
+
+    // Structural validation only. Returns dependency-first task IDs without dispatching anything.
+    // Up to 256 nodes and 4096 dependency entries; input order is immaterial.
+    [Throws=BridgeError]
+    sequence<string> validate_task_dag(sequence<DagNode> tasks);
+
+    // Processes one caller-supplied synthetic VAD frame; never opens an audio device.
+    [Throws=BridgeError]
+    PcmProbe inject_audio_pcm_for_testing(sequence<i16> samples);
+
+    // Only capability "diagnostics": select_model_profile({"memory_gb": number}) or
+    // endpoint_silence_ms({"completeness": "complete" | "ambiguous" | "incomplete"}).
+    [Throws=BridgeError]
+    TaskResultDto execute_task_sync(string task_id, string capability, string operation, string parameters_json);
+};
+
+enum Completeness { "Complete", "Ambiguous", "Incomplete" };
+
+dictionary DagNode {
+    string task_id;
+    sequence<string> dependencies;
+};
+
+[Error]
+interface BridgeError {
+    InvalidInput(string reason);
+    UnsupportedTask(string reason);
+};
+
+[Error]
+interface MobileWorkflowError {
+    InvalidInput(string reason);
+    Unavailable(string reason);
+};
+
+dictionary MobileWorkflowReceipt {
+    string profile;
+    u32 completed_tasks;
+};
+
+dictionary PcmProbe {
+    u32 sample_count;
+    float applied_gain;
+    float output_peak;
+};
+
+dictionary TaskResultDto {
+    string task_id;
+    string status;
+    string outcome_json;
+    string? error_code;
+};

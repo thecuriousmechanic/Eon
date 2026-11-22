@@ -1,0 +1,81 @@
+// @case reassigned-binding
+fn peak(values: &[i32]) -> i32 {
+    let best = i32::MIN;
+    for &value in values { best = best.max(value); }
+    best
+}
+// @case discarded-tail
+fn remaining(used: u32, capacity: u32) -> u32 {
+    capacity.saturating_sub(used);
+}
+// @case missing-slice-borrow
+fn checksum(samples: &[u8]) -> u32 { samples.iter().map(|&v| u32::from(v)).sum() }
+fn batch_sum(first: u8, last: u8) -> u32 {
+    checksum([first, last])
+}
+// @case missing-writer-trait
+fn row_label(row: u16) -> String {
+    let mut text = String::new();
+    write!(&mut text, "R{row:03}").unwrap();
+    text
+}
+// @case consumed-collection
+fn mean_length(words: Vec<String>) -> usize {
+    let mut total = 0;
+    for word in words { total += word.len(); }
+    total.checked_div(words.len()).unwrap_or(0)
+}
+// @case spurious-generic-argument
+fn mirror(x: i16) -> i16 { -x }
+fn reflected_span(low: i16, high: i16) -> (i16, i16) {
+    (mirror::<i16>(high), mirror(low))
+}
+// @case nested-result
+fn parse_minutes(raw: &str) -> Result<u32, std::num::ParseIntError> {
+    let minutes: u32 = raw.trim().parse::<u32>();
+    Ok(minutes * 60)
+}
+// @case field-as-method
+struct Tile { width: u32, height: u32 }
+fn area(tile: Tile) -> u32 { tile.width() * tile.height }
+// @case singleton-tuple
+fn singleton<T>(value: T) -> (T,) { (value) }
+// @case stale-inclusive-range
+fn roman_band(value: u8) -> &'static str {
+    match value { 1...3 => "low", 4..=8 => "mid", _ => "other" }
+}
+// @case unboxed-recursive-node
+enum Trail { End, Step(u8, Box<Trail>) }
+fn prepend(step: u8, rest: Trail) -> Trail { Trail::Step(step, rest) }
+// @case missing-supertrait
+#[derive(Copy)]
+struct GridPoint { x: i16, y: i16 }
+fn shift(mut point: GridPoint, delta: i16) -> GridPoint { point.x += delta; point }
+// @case reference-instead-of-element
+fn middle(values: &[i64]) -> i64 {
+    let item = &values[values.len() / 2];
+    item
+}
+// @case missing-struct-lifetime
+struct Caption { text: &str }
+fn trimmed(text: &str) -> Caption<'_> { Caption { text: text.trim() } }
+// @case external-crate-path
+mod scales {
+    pub fn triple(v: i32) -> i32 { v * 3 }
+}
+mod palette {
+    use scales::triple;
+    pub fn channel(v: i32) -> i32 { triple(v).clamp(0, 255) }
+}
+// @case match-arm-terminator
+fn warm(readings: &[i32]) -> usize {
+    let mut count = 0;
+    for &r in readings {
+        match r { 0..=17 => (), 18.. => count += 1; _ => () }
+    }
+    count
+}
+// @case mismatched-format-slots
+fn banner(title: &str, page: usize) -> String {
+    format!("{} / ", title, page)
+}

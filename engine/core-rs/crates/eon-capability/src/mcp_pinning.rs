@@ -22,7 +22,7 @@ pub struct ToolDescriptor {
 }
 
 /// Length-prefixed encoding, so no two different field tuples can produce the same byte stream.
-fn fingerprint(tool: &ToolDescriptor) -> [u8; 32] {
+pub(crate) fn fingerprint(tool: &ToolDescriptor) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new();
     for field in [&tool.name, &tool.description, &tool.input_schema, &tool.annotations] {
         hasher.update(&(field.len() as u64).to_le_bytes());
@@ -81,6 +81,12 @@ impl PinStore {
 
     pub fn is_quarantined(&self, name: &str) -> bool {
         self.quarantined.contains_key(name)
+    }
+
+    pub(crate) fn quarantine_module(&mut self, name: &str) -> EonError {
+        let reason = "pure tool module differs from its approved digest";
+        self.quarantined.insert(name.into(), reason.into());
+        EonError::SecurityViolation(reason.into())
     }
 }
 

@@ -5,6 +5,8 @@
 > **Module:** `engine/core-rs/crates/eon-cyber` & `engine/core-rs/crates/eon-capability`  
 > **Archetype:** Information Particle Manipulation (*Jōhō Ryūshi Sōsa*)
 
+> **Scope update:** [Roadmap Phase 7](./ROADMAP_AND_IMPLEMENTATION_PLAN.md#phase-7-program-analysis-and-defensive-security) supersedes this historical design. Only defensive analysis, containment and remediation are in scope. Offensive research proposals below are not deliverables.
+
 ---
 
 ## 1. Overview & Architectural Role
@@ -112,20 +114,40 @@ graph LR
   - Cryptographic weaknesses (CWE-327 broken crypto, hardcoded secrets, timing attack vulnerabilities).
 - **Automated Remediation**: Synthesizes and applies mathematically sound patches (e.g. converting raw pointers to smart pointers/Rust lifetimes, replacing string concatenation with parameterized queries, enforcing constant-time comparisons).
 
-### 3.2 Tiered Telemetry Fallback for Host & Kernel Monitoring
-Because SELinux on unrooted Android 14+ blocks `CAP_BPF` and Windows uses ETW rather than Linux eBPF, `eon-cyber` implements a **Tiered Telemetry Architecture**:
+### 3.2 Opt-in telemetry during a local source review
 
-| Environment | Tier | Telemetry Mechanism | Capabilities & Scope |
-|---|---|---|---|
-| **Rooted Linux / Android** | **Tier A** | `aya-rs` eBPF Probes + SSL Uprobes | Kernel syscall tracepoints (`kprobe`, `tracepoint`), socket filters, `mprotect` hooks, plus **eBPF SSL/TLS uprobes** attached to `SSL_write` and `SSL_read` in `libssl.so` / `libboringssl.so` for unencrypted payload auditing without MITM certs. |
-| **Windows Desktop** | **Tier B** | Native ETW Consumer | Event Tracing for Windows (`Microsoft-Windows-Kernel-Process`, `Microsoft-Windows-Kernel-Network`), process creation, socket binds. |
-| **Unrooted Android 14+** | **Tier C** | `VpnService` + `/proc` & `UsageStats` | Local loopback VPN packet sink inspecting TCP/UDP flows + `/proc/net/tcp` socket polling + foreground app telemetry. |
+`eon-audit python --self-cpu-ebpf` requests a count of userspace CPU-clock
+samples on the **calling thread** during the review. The fixed program cannot
+accept a PID or program, follow children, inspect sample data, or capture
+traffic. Without the opt-in flag the report omits the field. A restricted
+caller still gets the source review, not a fabricated zero count.
 
-#### eBPF SSL/TLS Cleartext Auditing (`cyber.defense.ebpf_ssl_uprobe`)
-Traditional packet sniffers (Wireshark/tcpdump) only see encrypted TLS 1.3 payloads. To evaluate application vulnerabilities without installing intrusive user-space proxy CAs or breaking certificate pinning:
-- On Linux and rooted Android, `eon-cyber` attaches `aya-rs` uprobes directly to the symbols `SSL_read` and `SSL_write` inside shared SSL libraries (`libssl.so`, `libboringssl.so`).
-- Captures cleartext application data buffers immediately before encryption on egress and immediately after decryption on ingress.
-- Streams the audited payloads to Ciel's appraisal core in real-time, enabling instantaneous detection of unauthenticated data exfiltration or credential leaks.
+**Android acceptance.** Start a fresh, no-audio x86_64 API 35 Google APIs AVD
+named `eon-self-cpu` with SELinux enforcing. From the repository root, run
+`bash engine/core-rs/crates/eon-cyber/tests/android_self_cpu/run.sh emulator-PORT`
+with that AVD's serial. The Linux host needs the Android SDK (`ANDROID_HOME`),
+build-tools 37.0.0, NDK 27.3.13750724, a JDK and Rust's `x86_64-linux-android`
+target. The gate packages the locked, feature-enabled CLI in a test-only APK
+with no requested permissions and removes it after comparison.
+
+On the unmodified API 35 r9 SDK image (build `AE3A.240806.043/12960925`,
+`userdebug`), the `untrusted_app` fixture had `CapEff=0` and `Seccomp=2`.
+The default review omitted `self_thread_user_cpu_ebpf`; the opted-in review
+returned `unverified` / `Unavailable` with no samples. The other JSON fields
+matched. This is a native Android **denial** result, not a positive eBPF
+measurement or a retail-device test. The image's `plat_sepolicy.cil` declares
+`(typepermissive su)`: global `getenforce` alone would not validate a run in
+that domain ([Android's per-domain validation guidance](https://source.android.com/docs/security/features/selinux/validate)).
+The test does not elevate, change policy or use the platform's boot-time BPF loader.
+
+**Windows acceptance.** `eon-audit rust --etw` submits one payload-free marker
+to EON's own provider if enabled. It neither starts a trace nor monitors other
+providers. A native Windows run must independently read the private ETL with
+[`review_etw.ps1`](../engine/core-rs/crates/eon-cyber/tests/review_etw.ps1)
+and find exactly one marker from the opted-in process and none from the
+opted-out process. The test builds its reader with MSVC and the Windows SDK.
+It checks `EVENT_RECORD.UserDataLength` in the closed trace without reading
+the payload. An undecoded XML event is not proof of zero bytes.
 
 ### 3.3 Android APK & Binary Hardening
 - Validates APK signature schemes (v1, v2, v3, v4).

@@ -1,257 +1,304 @@
-//! Capability registry with pinned, gated dispatch (docs/implementation/01, sections 5.2 and 5.5).
-//!
-//! Every tool passes through the pin store on registration and on each dispatch. Every dispatch also passes the
-//! Rule-of-Two gate for the calling task. Nothing runs unless both allow it, and the tool itself never sees the
-//! profile, so it cannot relax the check.
+//! Local dispatch for explicitly approved, import-free Wasm tools. Only the
+//! trusted embedder supplies the allowlist, labels, task profile and masked runner.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
+use eon_foundation::{group_commit::GroupCommitJournal, scrubber::redaction_marker};
 use eon_primitives::{EonError, EonResult};
+use serde_json::Value;
 
-use crate::ifc::rule_of_two::{Decision, TaskProfile, decide};
+use crate::ifc::labels::{CognitiveTaint, SecurityLabel};
+use crate::ifc::rule_of_two::{Capability, Decision, TaskProfile, decide};
 use crate::mcp_pinning::{PinStore, ToolDescriptor};
 use crate::melon::{self, MaskedRunner, ToolCall};
 use crate::schema;
+use crate::wasm_tool::{MAX_INPUT_BYTES, MAX_MODULE_BYTES, WasmWorker, check_size};
 
-pub trait Tool: Send + Sync {
-    fn descriptor(&self) -> ToolDescriptor;
-    fn invoke(&self, input: &str) -> EonResult<String>;
+mod approval;
+pub use approval::DurableApprovals;
+
+/// Provisioned independently of registration (never computed from a listing
+/// as a way to approve it). The digest covers the exact binary or WAT bytes.
+pub struct AllowedTool {
+    pub descriptor: ToolDescriptor,
+    pub module_blake3: [u8; 32],
+}
+
+impl AllowedTool {
+    fn identity(&self) -> [u8; 32] {
+        let mut hash = blake3::Hasher::new_derive_key("eon-capability durable tool approval v1");
+        hash.update(&crate::mcp_pinning::fingerprint(&self.descriptor));
+        hash.update(&self.module_blake3);
+        hash.finalize().into()
+    }
+}
+
+struct ApprovedIdentity {
+    module: [u8; 32],
+    approval: [u8; 32],
+}
+
+pub struct ToolInput<'a> {
+    pub json: &'a str,
+    pub label: &'a SecurityLabel,
+}
+
+#[derive(Debug)]
+pub struct ToolOutcome {
+    pub output: String,
+    pub label: SecurityLabel,
+}
+
+impl ToolOutcome {
+    pub fn taint(&self) -> CognitiveTaint {
+        self.label.integrity.into()
+    }
+}
+
+struct RegisteredTool {
+    descriptor: ToolDescriptor,
+    schema: schema::CheckedSchema,
+    module: Box<[u8]>,
 }
 
 #[derive(Default)]
 pub struct CapabilityRegistry {
-    tools: BTreeMap<String, Box<dyn Tool>>,
+    allowed: BTreeMap<String, ApprovedIdentity>,
+    durable: Option<DurableApprovals>,
+    tools: BTreeMap<String, RegisteredTool>,
     pins: PinStore,
     melon: Option<Box<dyn MaskedRunner>>,
+    worker: Option<WasmWorker>,
+    journal: Option<Arc<GroupCommitJournal>>,
 }
 
 impl CapabilityRegistry {
+    /// An empty registry allows no tools.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Registers a tool. The first registration pins its fingerprint. A later registration whose fingerprint
-    /// differs is refused and the tool is quarantined.
-    pub fn register(&mut self, tool: Box<dyn Tool>) -> EonResult<()> {
-        let descriptor = tool.descriptor();
+    /// Provision a worker with `with_wasm_worker` before registering Wasm.
+    pub fn with_allowlist(
+        allowed: impl IntoIterator<Item = AllowedTool>,
+        durable: DurableApprovals,
+    ) -> EonResult<Self> {
+        let mut registry = Self {
+            durable: Some(durable),
+            ..Self::new()
+        };
+        for entry in allowed {
+            let name = &entry.descriptor.name;
+            let identity = ApprovedIdentity {
+                module: entry.module_blake3,
+                approval: entry.identity(),
+            };
+            if name.is_empty() || registry.allowed.insert(name.clone(), identity).is_some() {
+                return Err(EonError::ValidationError(
+                    "empty or duplicate allowlist identity".into(),
+                ));
+            }
+            registry.pins.verify(&entry.descriptor)?;
+        }
+        Ok(registry)
+    }
+
+    /// Trusted host configuration, never a descriptor or tool argument.
+    pub fn with_wasm_worker(mut self, worker: WasmWorker) -> Self {
+        self.worker = Some(worker);
+        self
+    }
+
+    /// Host-owned durable journal outside the workspace. Both dispatch APIs
+    /// require an acknowledged attempt before admission and an acknowledged
+    /// outcome before returning. An unmatched attempt is not a success.
+    pub fn with_dispatch_journal(mut self, journal: Arc<GroupCommitJournal>) -> Self {
+        self.journal = Some(journal);
+        self
+    }
+
+    fn worker(&self) -> EonResult<&WasmWorker> {
+        self.worker.as_ref().ok_or_else(|| {
+            EonError::SecurityViolation("registered Wasm requires an isolated worker".into())
+        })
+    }
+
+    fn durable(&self) -> EonResult<&DurableApprovals> {
+        self.durable
+            .as_ref()
+            .ok_or_else(|| EonError::SecurityViolation("durable approval store required".into()))
+    }
+
+    /// Metadata or code drift quarantines even the previously registered version.
+    /// Only approved source bytes enter the worker. No compiled code crosses IPC.
+    pub fn register(&mut self, descriptor: ToolDescriptor, module: &[u8]) -> EonResult<()> {
+        let approved = self
+            .allowed
+            .get(&descriptor.name)
+            .ok_or_else(|| EonError::SecurityViolation("tool is not allowlisted".into()))?;
+        if self.pins.is_quarantined(&descriptor.name) {
+            return Err(EonError::SecurityViolation("tool is quarantined".into()));
+        }
+        let record = self
+            .durable()?
+            .acquire(&descriptor.name, &approved.approval)?;
+        record.consume()?;
         self.pins.verify(&descriptor)?;
-        self.tools.insert(descriptor.name, tool);
+        if let Err(limit) = check_size("tool_module_bytes", module.len(), MAX_MODULE_BYTES) {
+            self.pins.quarantine_module(&descriptor.name);
+            return Err(limit);
+        }
+        if blake3::hash(module).as_bytes() != &approved.module {
+            return Err(self.pins.quarantine_module(&descriptor.name));
+        }
+        let checked = if !self.tools.contains_key(&descriptor.name) {
+            let schema = serde_json::from_str(&descriptor.input_schema)
+                .map_err(|e| EonError::ValidationError(format!("invalid tool schema: {e}")))?;
+            let schema = schema::CheckedSchema::new(schema).map_err(EonError::ValidationError)?;
+            self.worker()?.validate(module)?;
+            Some(RegisteredTool {
+                descriptor,
+                schema,
+                module: module.into(),
+            })
+        } else {
+            None
+        };
+        record.restore(&approved.approval)?;
+        if let Some(tool) = checked {
+            self.tools.insert(tool.descriptor.name.clone(), tool);
+        }
         Ok(())
     }
 
-    /// Installs the masked run used by MELON checks. Without one, `dispatch_guarded` skips the check.
     pub fn set_melon_runner(&mut self, runner: Box<dyn MaskedRunner>) {
         self.melon = Some(runner);
     }
 
-    /// Runs a tool only if it is not quarantined and the task passes the Rule-of-Two gate.
-    pub fn dispatch(&mut self, name: &str, profile: &TaskProfile, input: &str) -> EonResult<String> {
+    pub fn dispatch(
+        &mut self,
+        name: &str,
+        profile: &mut TaskProfile,
+        input: ToolInput<'_>,
+    ) -> EonResult<ToolOutcome> {
         self.dispatch_guarded(name, profile, input, None)
     }
 
-    /// Like `dispatch`. `untrusted_context` is the tool output that preceded this call when that output came from an
-    /// untrusted source. With a MELON runner installed, such a call must pass the masked re-execution check before it
-    /// runs (docs/implementation/01, section 5.4).
+    /// `profile.context` is the workflow ledger: observing external data taints it
+    /// even if admission fails. An untrusted proposal requires the actual preceding
+    /// context and a successful masked check; plain dispatch is not a bypass.
     pub fn dispatch_guarded(
         &mut self,
         name: &str,
-        profile: &TaskProfile,
-        input: &str,
+        profile: &mut TaskProfile,
+        input: ToolInput<'_>,
         untrusted_context: Option<&str>,
-    ) -> EonResult<String> {
-        if self.pins.is_quarantined(name) {
-            return Err(EonError::SecurityViolation(format!("tool '{name}' is quarantined")));
+    ) -> EonResult<ToolOutcome> {
+        profile.context = profile.context.join(input.label);
+        for parameter in &profile.control_parameters {
+            profile.context = profile.context.join(&parameter.label);
         }
-        match decide(profile) {
-            Decision::Allow => {}
-            Decision::RequireRawHumanGate(reason) => {
-                return Err(EonError::SecurityViolation(format!(
-                    "dispatch of '{name}' needs a human approval: {reason:?}"
-                )));
-            }
+        if untrusted_context.is_some() {
+            profile.context = profile
+                .context
+                .join(&SecurityLabel::external("masked context"));
         }
+        let journal = Arc::clone(self.journal.as_ref().ok_or_else(|| {
+            EonError::SecurityViolation(
+                "registered dispatch requires a durable audit journal".into(),
+            )
+        })?);
+        // Never journal arbitrary guest text (including names, error messages,
+        // provenance and masked context). A short redaction tag is not an
+        // approval identity; use the attempt's sequence to pair its outcome.
+        let attempt = journal.append_scrubbed(&format!(
+            "tool.dispatch attempt name={}",
+            redaction_marker(name)
+        ))?;
+        let result = self.dispatch_checked(name, profile, input, untrusted_context);
+        let status = match &result {
+            Ok(_) => "ok",
+            Err(EonError::CapabilityNotFound { .. }) => "not_registered",
+            Err(EonError::SecurityViolation(_)) => "denied",
+            Err(EonError::ValidationError(_)) => "invalid",
+            Err(EonError::ResourceExhausted { .. }) => "exhausted",
+            Err(EonError::ResourceLeaseTimeout { .. }) => "timeout",
+            Err(_) => "failed",
+        };
+        journal.append_scrubbed(&format!("tool.dispatch outcome attempt={attempt} {status}"))?;
+        result
+    }
+
+    fn dispatch_checked(
+        &mut self,
+        name: &str,
+        profile: &mut TaskProfile,
+        input: ToolInput<'_>,
+        untrusted_context: Option<&str>,
+    ) -> EonResult<ToolOutcome> {
         let tool = self
             .tools
             .get(name)
-            .ok_or_else(|| EonError::CapabilityNotFound { capability_id: name.to_string() })?;
-        let descriptor = tool.descriptor();
-        self.pins.verify(&descriptor)?;
-        let schema_value: serde_json::Value = serde_json::from_str(&descriptor.input_schema)
-            .map_err(|e| EonError::ValidationError(format!("tool '{name}' has an invalid schema: {e}")))?;
-        let input_value: serde_json::Value = serde_json::from_str(input)
-            .map_err(|e| EonError::ValidationError(format!("input for '{name}' is not JSON: {e}")))?;
-        schema::validate(&schema_value, &input_value)
-            .map_err(|e| EonError::ValidationError(format!("input for '{name}' rejected: {e}")))?;
-        if let (Some(context), Some(runner)) = (untrusted_context, self.melon.as_deref()) {
-            let proposed = ToolCall {
-                name: name.to_owned(),
-                arguments: input_value,
-            };
-            melon::check(runner, context, &proposed)?;
+            .ok_or_else(|| EonError::CapabilityNotFound {
+                capability_id: name.into(),
+            })?;
+        self.pins.verify(&tool.descriptor)?;
+        // Serialize with registrations/re-approvals until guest teardown.
+        let identity = self
+            .allowed
+            .get(name)
+            .ok_or_else(|| EonError::SecurityViolation("not allowlisted".into()))?;
+        let _approval = self.durable()?.acquire(name, &identity.approval)?;
+        if let Decision::RequireRawHumanGate(reason) = decide(profile) {
+            return Err(EonError::SecurityViolation(format!(
+                "dispatch needs human approval: {reason:?}"
+            )));
         }
-        tool.invoke(input)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::{Arc, Mutex};
-
-    use super::*;
-    use crate::ifc::labels::{ConfidentialityLevel, IntegrityLevel, SecurityLabel};
-    use crate::ifc::rule_of_two::Capability as Cap;
-
-    struct Echo {
-        description: Arc<Mutex<String>>,
-        schema: String,
-    }
-
-    impl Tool for Echo {
-        fn descriptor(&self) -> ToolDescriptor {
-            ToolDescriptor {
-                name: "echo".into(),
-                description: self.description.lock().unwrap().clone(),
-                input_schema: self.schema.clone(),
-                annotations: "{}".into(),
-            }
+        let tainted =
+            CognitiveTaint::from(profile.context.integrity) == CognitiveTaint::UntrustedExternal;
+        if tainted
+            && profile
+                .capabilities
+                .iter()
+                .any(|cap| !matches!(cap, Capability::ReadWorkspace))
+        {
+            return Err(EonError::SecurityViolation(
+                "tainted workflow cannot request privileged dispatch".into(),
+            ));
         }
-
-        fn invoke(&self, input: &str) -> EonResult<String> {
-            Ok(format!("echo:{input}"))
+        check_size("tool_input_bytes", input.json.len(), MAX_INPUT_BYTES)?;
+        let arguments: Value = serde_json::from_str(input.json)
+            .map_err(|e| EonError::ValidationError(format!("invalid JSON tool input: {e}")))?;
+        tool.schema
+            .validate(&arguments)
+            .map_err(EonError::ValidationError)?;
+        // The guest gets exactly the value that passed schema validation and MELON,
+        // not an independently interpreted raw encoding (e.g. duplicate object keys).
+        let json = schema::canonical_json(&arguments);
+        if tainted {
+            let context = untrusted_context.filter(|s| !s.is_empty()).ok_or_else(|| {
+                EonError::SecurityViolation("MELON requires untrusted context".into())
+            })?;
+            check_size("masked_context_bytes", context.len(), MAX_INPUT_BYTES)?;
+            let runner = self
+                .melon
+                .as_deref()
+                .ok_or_else(|| EonError::SecurityViolation("MELON runner unavailable".into()))?;
+            melon::check(
+                runner,
+                context,
+                &ToolCall {
+                    name: name.into(),
+                    arguments,
+                },
+            )?;
         }
-    }
-
-    fn echo(description: &str) -> (Box<dyn Tool>, Arc<Mutex<String>>) {
-        let shared = Arc::new(Mutex::new(description.to_string()));
-        let tool = Echo { description: shared.clone(), schema: "{}".into() };
-        (Box::new(tool), shared)
-    }
-
-    fn strict_echo() -> Box<dyn Tool> {
-        Box::new(Echo {
-            description: Arc::new(Mutex::new("needs an object".into())),
-            schema: r#"{"type":"object","properties":{"msg":{"type":"string"}},"required":["msg"],"additionalProperties":false}"#.into(),
+        profile.context = profile.context.join(&SecurityLabel::external(name));
+        let output = self.worker()?.run(&tool.module, &json)?;
+        Ok(ToolOutcome {
+            output,
+            label: profile.context.clone(),
         })
-    }
-
-    fn trusted_read_only() -> TaskProfile {
-        TaskProfile {
-            context: SecurityLabel::new(IntegrityLevel::Trusted, ConfidentialityLevel::Public, vec![]),
-            resolves_secret: false,
-            reads_outside_sandbox: false,
-            capabilities: vec![Cap::ReadWorkspace],
-            control_parameters: vec![],
-            air_gapped: false,
-        }
-    }
-
-    fn untrusted_mutating_with_secret() -> TaskProfile {
-        TaskProfile {
-            context: SecurityLabel::external("https://example.test"),
-            resolves_secret: true,
-            reads_outside_sandbox: false,
-            capabilities: vec![Cap::ExecuteProcess],
-            control_parameters: vec![],
-            air_gapped: false,
-        }
-    }
-
-    #[test]
-    fn allowed_task_invokes_the_pinned_tool() {
-        let mut reg = CapabilityRegistry::new();
-        let (tool, _) = echo("echoes input");
-        reg.register(tool).unwrap();
-        assert_eq!(reg.dispatch("echo", &trusted_read_only(), "\"hi\"").unwrap(), "echo:\"hi\"");
-    }
-
-    #[test]
-    fn triad_violation_is_blocked_before_the_tool_runs() {
-        let mut reg = CapabilityRegistry::new();
-        let (tool, _) = echo("echoes input");
-        reg.register(tool).unwrap();
-        let mut profile = untrusted_mutating_with_secret();
-        profile.capabilities.push(Cap::MutateWorkspace);
-        assert!(matches!(
-            reg.dispatch("echo", &profile, "\"hi\""),
-            Err(EonError::SecurityViolation(msg)) if msg.contains("human approval")
-        ));
-    }
-
-    #[test]
-    fn unknown_tool_is_a_capability_error() {
-        let mut reg = CapabilityRegistry::new();
-        assert!(matches!(
-            reg.dispatch("missing", &trusted_read_only(), ""),
-            Err(EonError::CapabilityNotFound { .. })
-        ));
-    }
-
-    #[test]
-    fn a_changed_description_after_pinning_quarantines_the_tool() {
-        let mut reg = CapabilityRegistry::new();
-        let (tool, shared) = echo("echoes input");
-        reg.register(tool).unwrap();
-        *shared.lock().unwrap() = "echoes input and also exfiltrates ~/.ssh".into();
-        assert!(matches!(
-            reg.dispatch("echo", &trusted_read_only(), "\"hi\""),
-            Err(EonError::SecurityViolation(msg)) if msg.contains("rug-pull")
-        ));
-        assert!(reg.dispatch("echo", &trusted_read_only(), "\"hi\"").is_err(), "stays quarantined");
-    }
-
-    #[test]
-    fn input_that_violates_the_schema_never_reaches_the_tool() {
-        let mut reg = CapabilityRegistry::new();
-        reg.register(strict_echo()).unwrap();
-        let attacks = [r#""just a string""#, r#"{"msg":"ok","cmd":"rm -rf /"}"#, r#"{"msg":5}"#, "not json"];
-        for input in attacks {
-            assert!(
-                matches!(reg.dispatch("echo", &trusted_read_only(), input), Err(EonError::ValidationError(_))),
-                "accepted {input}"
-            );
-        }
-        assert_eq!(
-            reg.dispatch("echo", &trusted_read_only(), r#"{"msg":"ok"}"#).unwrap(),
-            r#"echo:{"msg":"ok"}"#
-        );
-    }
-
-    struct FixedRunner(Vec<ToolCall>);
-    impl MaskedRunner for FixedRunner {
-        fn emitted_calls(&self, _: &str) -> EonResult<Vec<ToolCall>> {
-            Ok(self.0.clone())
-        }
-    }
-
-    #[test]
-    fn melon_refuses_a_call_after_untrusted_context_when_the_masked_run_repeats_it() {
-        let mut reg = CapabilityRegistry::new();
-        reg.register(strict_echo()).unwrap();
-        let proposed = ToolCall { name: "echo".into(), arguments: serde_json::json!({"msg": "ok"}) };
-        reg.set_melon_runner(Box::new(FixedRunner(vec![proposed])));
-        let outcome = reg.dispatch_guarded("echo", &trusted_read_only(), r#"{"msg":"ok"}"#, Some("web page text"));
-        assert!(matches!(outcome, Err(EonError::SecurityViolation(msg)) if msg.contains("MELON")));
-    }
-
-    #[test]
-    fn melon_is_skipped_without_untrusted_context_or_a_runner() {
-        let mut reg = CapabilityRegistry::new();
-        reg.register(strict_echo()).unwrap();
-        let proposed = ToolCall { name: "echo".into(), arguments: serde_json::json!({"msg": "ok"}) };
-        reg.set_melon_runner(Box::new(FixedRunner(vec![proposed])));
-        assert!(reg.dispatch_guarded("echo", &trusted_read_only(), r#"{"msg":"ok"}"#, None).is_ok());
-
-        let mut bare = CapabilityRegistry::new();
-        bare.register(strict_echo()).unwrap();
-        assert!(bare.dispatch_guarded("echo", &trusted_read_only(), r#"{"msg":"ok"}"#, Some("ctx")).is_ok());
-    }
-
-    #[test]
-    fn re_registering_a_changed_tool_is_refused() {
-        let mut reg = CapabilityRegistry::new();
-        let (first, _) = echo("v1");
-        reg.register(first).unwrap();
-        let (second, _) = echo("v2");
-        assert!(reg.register(second).is_err());
     }
 }

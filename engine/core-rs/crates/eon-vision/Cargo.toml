@@ -5,6 +5,33 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+paddle-ocr = ["dep:image", "dep:ort", "dep:sha2", "eon-primitives/onnx-runtime"]
+omniparser-icons = ["dep:image", "dep:ort", "dep:sha2", "eon-primitives/onnx-runtime"]
+omniparser-openvino = ["omniparser-icons", "dep:openvino"]
+qwen-vl = ["dep:image", "dep:llama-cpp-2", "dep:sha2"]
+
 [dependencies]
 eon-primitives = { path = "../eon-primitives" }
+image = { version = "0.25.10", default-features = false, features = ["jpeg"], optional = true }
+ort = { workspace = true, optional = true }
+sha2 = { version = "0.10.9", optional = true }
 
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+openvino = { version = "=0.11.1", features = ["runtime-linking"], optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+llama-cpp-2 = { version = "=0.1.161", features = ["mtmd"], optional = true }
+rustix = { version = "1", features = ["fs"] }
+
+[[test]]
+name = "still_ocr"
+required-features = ["paddle-ocr"]
+
+[[test]]
+name = "still_icons"
+required-features = ["omniparser-icons"]
+
+[[test]]
+name = "still_vlm"
+required-features = ["qwen-vl"]

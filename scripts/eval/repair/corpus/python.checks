@@ -1,0 +1,39 @@
+# @case list-mutator-result
+before = ["ink"]
+assert collect_word(before, " quill ") is before
+assert before == ["ink", "quill"]
+# @case shared-omitted-argument
+a = log_place("Lima")
+b = log_place("Riga")
+assert a == ["Lima"] and b == ["Riga"]
+c = ["Oslo"]
+assert log_place("Rome", c) is c and c == ["Oslo", "Rome"]
+# @case repeated-row-alias
+rows = grid(3, 2)
+rows[0][1] = 8
+assert rows == [[0, 8, 0], [0, 0, 0]] and grid(1, 0) == []
+# @case dictionary-pair-iteration
+assert legend({"red": 2, "blue": 8}) == ["red:2", "blue:8"] and legend({}) == []
+# @case literal-identity
+assert is_header("".join(["chap", "ter"])) and not is_header("section")
+# @case truthy-disjunction
+assert is_weekend("Sun") is True and is_weekend("Sat") is True and is_weekend("Mon") is False
+# @case uncalled-text-predicate
+assert digits_only("123") == "123" and digits_only("1a") == ""
+# @case late-closure-binding
+calls = offsets([10, 20, -1])
+assert [f() for f in reversed(calls)] == [0, 21, 11] and offsets([]) == []
+# @case exception-disjunction
+assert lookup(["oak"], 0) == "oak" and lookup([], 3) is None and lookup({}, "oak") is None
+# @case generator-list-contract
+assert readings([-1, 4, 0]) == [8, 0] and readings([]) == []
+# @case tuple-assertion
+assert normalized(25) == 0.25
+try:
+    normalized(101)
+except AssertionError as error:
+    assert str(error) == "score outside percentage range"
+else:
+    raise AssertionError("invalid score accepted")
+# @case missing-interpolation
+assert shelf_label("Art", 12) == "Art-12" and shelf_label("", 0) == "-0"

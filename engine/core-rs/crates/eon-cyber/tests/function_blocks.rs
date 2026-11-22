@@ -1,6 +1,6 @@
 //! Function blocks carry each definition's name, start line, and exact source text.
 
-use eon_cyber::cpg::{function_blocks, Lang};
+use eon_cyber::cpg::{Lang, checked_top_level_function, function_blocks};
 
 const BEFORE: &str = r#"
 fn load(path: &str) -> String {
@@ -28,4 +28,19 @@ fn nested_functions_are_included() {
     let source = "fn outer() {\n    fn inner() {}\n}\n";
     let names: Vec<String> = function_blocks(Lang::Rust, source).unwrap().into_iter().map(|b| b.name).collect();
     assert_eq!(names, vec!["outer", "inner"]);
+}
+
+#[test]
+fn python_classes_and_decorated_functions_count_toward_uniqueness_but_are_not_editable() {
+    let ordinary = "def f(): pass\n";
+    for conflict in [
+        "@wrap\ndef f(): pass\n",
+        "@wrap\n@other\nasync def f(): pass\n",
+        "class f: pass\n",
+        "@wrap\nclass f: pass\n",
+    ] {
+        for source in [conflict.to_owned(), format!("{ordinary}{conflict}"), format!("{conflict}{ordinary}")] {
+            assert!(checked_top_level_function(Lang::Python, &source, "f").is_err(), "{source}");
+        }
+    }
 }

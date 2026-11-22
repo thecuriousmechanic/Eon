@@ -1,0 +1,8 @@
+<!-- From API 31 the platform requires a non-null recognitionService string but ignores its
+     value. Do not register a speech provider or replace the user's legacy speech recognizer. -->
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="com.eon.assistant.EonVoiceSessionService"
+    android:recognitionService="unusedOnApi31AndLater"
+    android:supportsAssist="true"
+    android:supportsLocalInteraction="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="false" />

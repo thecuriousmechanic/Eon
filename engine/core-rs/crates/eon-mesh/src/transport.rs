@@ -5,14 +5,22 @@
 //! unless a peer address points elsewhere. Protocol negotiation uses an ALPN string, so a peer that does not speak it
 //! is refused during the handshake.
 
+use std::net::{SocketAddr, SocketAddrV4};
+
+use crate::lan::permits;
 use crate::qos::TrafficClass;
 use bytes::Bytes;
 use eon_primitives::{EonError, EonResult};
-use iroh::endpoint::{presets::Minimal, Connection, Endpoint};
-use iroh::{EndpointAddr, RelayMode};
+use if_addrs::Ifv4Addr;
+use iroh::endpoint::{
+    presets::Minimal, BindOpts, Builder, Connection, Endpoint, NetReportConfig, PortmapperConfig,
+};
+use iroh::{EndpointAddr, EndpointId, RelayMode, SecretKey};
 
 /// Application protocol identifier. Peers that do not offer it are refused during the handshake.
 pub const ALPN: &[u8] = b"eon/mesh/1";
+pub(crate) const PAIRED_ALPN: &[u8] = b"eon/mesh/paired/4";
+const LAN_ELECTION_ALPN: &[u8] = b"eon/mesh/lan-election/1";
 
 /// Largest request or reply accepted on one stream. Larger frames are refused rather than buffered.
 pub const MAX_FRAME_BYTES: usize = 1 << 20;
@@ -26,18 +34,57 @@ fn transport_err(operation: &str, reason: impl std::fmt::Display) -> EonError {
 
 pub struct PeerNode {
     endpoint: Endpoint,
+    paired: Option<EndpointId>,
+    lan: Option<Ifv4Addr>,
 }
 
 impl PeerNode {
     /// Binds an endpoint that accepts `alpn` connections and uses no relays.
     pub async fn start_with_alpn(alpn: &[u8]) -> EonResult<Self> {
-        let endpoint = Endpoint::builder(Minimal)
+        Self::bind(Endpoint::builder(Minimal), alpn, None, None).await
+    }
+
+    /// Both devices provision each other's public key out of band. An address announcement
+    /// alone never authorizes a peer. Reuse the local secret when reconnecting after restart.
+    pub async fn start_paired(secret: SecretKey, remote: EndpointId) -> EonResult<Self> {
+        Self::bind(Endpoint::builder(Minimal), PAIRED_ALPN, Some(secret), Some(remote)).await
+    }
+
+    pub(crate) async fn bind_paired_lan(
+        secret: SecretKey,
+        remote: EndpointId,
+        local: &Ifv4Addr,
+    ) -> EonResult<(Self, SocketAddrV4)> {
+        let builder = Endpoint::builder(Minimal)
+            .clear_ip_transports()
+            .bind_addr_with_opts(
+                (local.ip, 0),
+                BindOpts::default().set_prefix_len(local.prefixlen).set_is_default_route(false),
+            )
+            .map_err(|e| transport_err("bind", e))?;
+        let mut node = Self::bind(builder, LAN_ELECTION_ALPN, Some(secret), Some(remote)).await?;
+        node.lan = Some(local.clone());
+        match node.endpoint.bound_sockets().as_slice() {
+            [SocketAddr::V4(addr)] if *addr.ip() == local.ip => Ok((node, *addr)),
+            _ => Err(transport_err("bind", "expected a single LAN socket")),
+        }
+    }
+
+    async fn bind(builder: Builder, alpn: &[u8], secret: Option<SecretKey>, paired: Option<EndpointId>) -> EonResult<Self> {
+        let mut builder = builder
             .alpns(vec![alpn.to_vec()])
             .relay_mode(RelayMode::Disabled)
-            .bind()
-            .await
-            .map_err(|e| transport_err("bind", e))?;
-        Ok(Self { endpoint })
+            .portmapper_config(PortmapperConfig::Disabled)
+            .net_report_config(NetReportConfig::minimal());
+        if let Some(secret) = secret {
+            builder = builder.secret_key(secret);
+        }
+        let endpoint = builder.bind().await.map_err(|e| transport_err("bind", e))?;
+        Ok(Self { endpoint, paired, lan: None })
+    }
+
+    pub fn paired_id(&self) -> Option<EndpointId> {
+        self.paired
     }
 
     pub async fn start() -> EonResult<Self> {
@@ -70,6 +117,9 @@ impl PeerNode {
         let priority = class
             .stream_priority()
             .ok_or_else(|| transport_err("request", "audio uses datagrams, not streams"))?;
+        if payload.len() > MAX_FRAME_BYTES {
+            return Err(transport_err("request", "frame too large"));
+        }
         let connection = self.dial(peer).await?;
         let (mut send, mut recv) = connection.open_bi().await.map_err(|e| transport_err("open_stream", e))?;
         send.set_priority(priority).map_err(|e| transport_err("set_priority", e))?;
@@ -97,31 +147,59 @@ impl PeerNode {
             .accept()
             .await
             .ok_or_else(|| transport_err("accept", "endpoint closed"))?;
+        if self.lan.as_ref().is_some_and(|lan| !permits(lan, &incoming.remote_addr().into())) {
+            incoming.ignore();
+            return Err(EonError::SecurityViolation("off-link mesh source".into()));
+        }
         let connection = incoming.await.map_err(|e| transport_err("handshake", e))?;
+        if self.paired.is_some_and(|id| id != connection.remote_id()) {
+            connection.close(403u32.into(), b"unpaired");
+            return Err(EonError::SecurityViolation("unpaired mesh peer".into()));
+        }
         Ok(Link { connection })
     }
 
     async fn dial(&self, peer: impl Into<EndpointAddr>) -> EonResult<Connection> {
+        let peer = peer.into();
+        if self.paired.is_some_and(|id| id != peer.id) {
+            return Err(EonError::SecurityViolation("unpaired mesh destination".into()));
+        }
+        if self.lan.as_ref().is_some_and(|lan| {
+            peer.addrs.is_empty() || !peer.addrs.iter().all(|path| permits(lan, path))
+        }) {
+            return Err(EonError::SecurityViolation("off-link mesh destination".into()));
+        }
+        let alpn = if self.lan.is_some() {
+            LAN_ELECTION_ALPN
+        } else if self.paired.is_some() {
+            PAIRED_ALPN
+        } else {
+            ALPN
+        };
         self.endpoint
-            .connect(peer, ALPN)
+            .connect(peer, alpn)
             .await
             .map_err(|e| transport_err("connect", e))
     }
 
     /// Accepts one connection, reads one request, answers it with `handler`, and waits for the peer to close.
     pub async fn serve_one(&self, handler: impl FnOnce(Vec<u8>) -> Vec<u8>) -> EonResult<()> {
-        let incoming = self
-            .endpoint
-            .accept()
-            .await
-            .ok_or_else(|| transport_err("accept", "endpoint closed"))?;
-        let connection = incoming.await.map_err(|e| transport_err("handshake", e))?;
+        self.try_serve_one(|bytes| Ok(handler(bytes))).await
+    }
+
+    pub(crate) async fn try_serve_one(&self, handler: impl FnOnce(Vec<u8>) -> EonResult<Vec<u8>>) -> EonResult<()> {
+        let Link { connection } = self.accept().await?;
         let (mut send, mut recv) = connection.accept_bi().await.map_err(|e| transport_err("accept_stream", e))?;
         let request = recv
             .read_to_end(MAX_FRAME_BYTES)
             .await
             .map_err(|e| transport_err("receive", e))?;
-        send.write_all(&handler(request)).await.map_err(|e| transport_err("send", e))?;
+        let reply = handler(request).inspect_err(|_| connection.close(400u32.into(), b"invalid request"))?;
+        if reply.len() > MAX_FRAME_BYTES {
+            connection.close(413u32.into(), b"reply too large");
+            return Err(transport_err("reply", "frame too large"));
+        }
+        send.write_all(&reply).await.map_err(|e| transport_err("send", e))?;
         send.finish().map_err(|e| transport_err("send", e))?;
         connection.closed().await;
         Ok(())
@@ -135,7 +213,7 @@ impl PeerNode {
 /// An established connection to one peer. Audio frames go out as datagrams, so a frame that cannot be delivered in
 /// time is dropped rather than retransmitted.
 pub struct Link {
-    connection: Connection,
+    pub(crate) connection: Connection,
 }
 
 impl Link {

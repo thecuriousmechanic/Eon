@@ -2,63 +2,156 @@
 //!
 //! Each device holds a replica of the shared projection. Replicas accept local edits offline, exchange update
 //! bytes, and converge without coordination. Imports are idempotent, so a duplicate or replayed update is harmless.
-//! The transport is out of scope here. Only the sync semantics are implemented and tested.
+//! The public string map and paired projections have disjoint documents, histories and frontiers.
 
-use loro::{ExportMode, LoroDoc, LoroValue, VersionVector};
+#[cfg(test)]
+mod privacy_tests;
+mod pages;
+pub(crate) use pages::{Page, check_writer_count};
+mod projections;
+pub use projections::{ContextEntry, ContextRecord, Entity, KnowledgeGraph, Relation, Speaker, WorkingContext};
+
+use loro::{
+    ContainerID, ContainerType, EncodedBlobMode, ExportMode, JsonMapOp, JsonOpContent,
+    LoroDoc, LoroValue, VersionVector,
+};
 
 use eon_primitives::{EonError, EonResult};
 
 const PROJECTION: &str = "projection";
 
+/// Local protected writes (UTF-8 key plus postcard-encoded value) reserve
+/// half a frame for Loro metadata and paired framing. This admission limit is
+/// not retroactive: larger legacy records can still travel in a fitting page.
+pub const MAX_PROTECTED_RECORD_BYTES: usize = crate::transport::MAX_FRAME_BYTES / 2;
+
 pub struct Replica {
-    doc: LoroDoc,
+    public: LoroDoc,
+    protected: LoroDoc,
 }
 
 impl Replica {
+    /// `peer_id` identifies a Loro writer, not a network credential. Never reuse
+    /// the same writer ID for independent histories, including after state loss.
     pub fn new(peer_id: u64) -> EonResult<Self> {
-        let doc = LoroDoc::new();
-        doc.set_peer_id(peer_id).map_err(loro_err)?;
-        Ok(Self { doc })
+        let public = LoroDoc::new();
+        let protected = LoroDoc::new();
+        public.set_peer_id(peer_id).map_err(loro_err)?;
+        protected.set_peer_id(peer_id).map_err(loro_err)?;
+        Ok(Self { public, protected })
     }
 
-    /// Writes a key in the shared projection and commits it locally.
+    /// Writes public data only. This legacy map is available to unpaired peers.
     pub fn set(&self, key: &str, value: &str) -> EonResult<()> {
-        self.doc
-            .get_map(PROJECTION)
-            .insert(key, value)
-            .map_err(loro_err)?;
-        self.doc.commit();
+        self.public.get_map(PROJECTION).insert(key, value).map_err(loro_err)?;
+        self.public.commit();
         Ok(())
     }
 
     pub fn get(&self, key: &str) -> Option<String> {
-        match self.doc.get_map(PROJECTION).get(key)? {
+        match self.public.get_map(PROJECTION).get(key)? {
             loro::ValueOrContainer::Value(LoroValue::String(s)) => Some(s.to_string()),
             _ => None,
         }
     }
 
-    /// Everything this replica knows, as one update blob. Pass it to another replica's `apply`.
+    /// Public history only. No protected operations or frontiers are included.
     pub fn export_all(&self) -> EonResult<Vec<u8>> {
-        self.doc.export(ExportMode::all_updates()).map_err(loro_err)
+        self.public.export(ExportMode::all_updates()).map_err(loro_err)
     }
 
     /// This replica's version vector. A peer sends it back so this replica can export only what the peer lacks.
     pub fn version(&self) -> Vec<u8> {
-        self.doc.oplog_vv().encode()
+        self.public.oplog_vv().encode()
     }
 
     /// The updates a peer lacks, given the version vector it sent. Empty of new operations when the peer is current.
     pub fn export_since(&self, peer_version: &[u8]) -> EonResult<Vec<u8>> {
-        let from = VersionVector::decode(peer_version).map_err(loro_err)?;
-        self.doc.export(ExportMode::updates(&from)).map_err(loro_err)
+        export_since(&self.public, peer_version)
     }
 
-    /// Applies an update blob. Applying the same blob twice has no further effect.
+    /// Accepts only complete histories/deltas of public string-map operations.
     pub fn apply(&self, update: &[u8]) -> EonResult<()> {
-        self.doc.import(update).map_err(loro_err)?;
-        Ok(())
+        import_checked(&self.public, update, |root, op| {
+            root == PROJECTION
+                && matches!(
+                    op,
+                    JsonMapOp::Delete { .. }
+                        | JsonMapOp::Insert {
+                            value: LoroValue::String(_),
+                            ..
+                        }
+                )
+        })
     }
+
+    pub(crate) fn paired_version(&self) -> VersionVector {
+        self.protected.oplog_vv()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn paired_export_since(&self, version: &[u8]) -> EonResult<Vec<u8>> {
+        export_since(&self.protected, version)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn paired_apply(&self, update: &[u8]) -> EonResult<()> {
+        import_checked(&self.protected, update, projections::allowed)
+    }
+}
+
+fn export_since(doc: &LoroDoc, version: &[u8]) -> EonResult<Vec<u8>> {
+    let from = VersionVector::decode(version).map_err(loro_err)?;
+    doc.export(ExportMode::updates(&from)).map_err(loro_err)
+}
+
+fn rejected() -> EonError {
+    EonError::ValidationError("mesh import rejected: invalid or out-of-domain history".into())
+}
+
+// Inspect *operations*, not the winning values: overwritten/deleted records, commit
+// messages and pending operations must not hitch a ride on a later export. Only
+// reconstruct the validated operations in the live document; never import opaque
+// snapshot state, dictionaries or unchecked bytes there.
+fn import_checked(doc: &LoroDoc, bytes: &[u8], allowed: impl Fn(&str, &JsonMapOp) -> bool) -> EonResult<()> {
+    let meta = LoroDoc::decode_import_blob_meta(bytes, true).map_err(|_| rejected())?;
+    if !matches!(meta.mode, EncodedBlobMode::Updates | EncodedBlobMode::Snapshot) {
+        return Err(rejected());
+    }
+    let scratch = doc.fork();
+    let before = scratch.oplog_vv();
+    if scratch.import(bytes).map_err(|_| rejected())?.pending.is_some() {
+        return Err(rejected());
+    }
+    let after = scratch.oplog_vv();
+    let ops = scratch.export_json_updates(&before, &after).map_err(|_| rejected())?;
+    for change in &ops.changes {
+        if change.msg.is_some() {
+            return Err(rejected());
+        }
+        for op in &change.ops {
+            let (
+                ContainerID::Root {
+                    name,
+                    container_type: ContainerType::Map,
+                },
+                JsonOpContent::Map(write),
+            ) = (&op.container, &op.content)
+            else {
+                return Err(rejected());
+            };
+            if !allowed(name.as_str(), write) {
+                return Err(rejected());
+            }
+        }
+    }
+    if !ops.changes.is_empty() && doc.import_json_updates(ops).map_err(|_| rejected())?.pending.is_some() {
+        return Err(rejected());
+    }
+    if !doc.oplog_vv().includes_vv(&after) {
+        return Err(rejected());
+    }
+    Ok(())
 }
 
 fn loro_err(e: impl std::fmt::Display) -> EonError {
@@ -89,7 +182,11 @@ mod tests {
         a.apply(&b.export_all().unwrap()).unwrap();
         b.apply(&a.export_all().unwrap()).unwrap();
 
-        assert_eq!(a.get("owner_note"), b.get("owner_note"), "replicas must agree on the conflicting key");
+        assert_eq!(
+            a.get("owner_note"),
+            b.get("owner_note"),
+            "replicas must agree on the conflicting key"
+        );
         assert!(a.get("owner_note").is_some());
         assert_eq!(a.get("battery").as_deref(), Some("80"));
         assert_eq!(b.get("battery").as_deref(), Some("80"));
@@ -126,7 +223,10 @@ mod tests {
 
         a.set("new", "y").unwrap();
         let delta = a.export_since(&b.version()).unwrap();
-        assert!(delta.len() < a.export_all().unwrap().len() / 4, "delta must not repeat the shared history");
+        assert!(
+            delta.len() < a.export_all().unwrap().len() / 4,
+            "delta must not repeat the shared history"
+        );
 
         b.apply(&delta).unwrap();
         assert_eq!(b.get("new").as_deref(), Some("y"));

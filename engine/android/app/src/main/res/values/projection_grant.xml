@@ -1,0 +1,19 @@
+<resources>
+    <bool name="projection_grant_supported">false</bool>
+    <item type="id" name="projection_grant_controls" />
+    <item type="id" name="projection_grant_status" />
+    <item type="id" name="projection_grant_start" />
+    <item type="id" name="projection_grant_stop" />
+    <string name="projection_controls">Review a no-output projection grant</string>
+    <string name="projection_help">This checks Android’s sharing permission, not your screen. Choose one app and select EON. EON will not receive images or audio. The grant ends within one minute. Stop here or in Android’s sharing controls.</string>
+    <string name="projection_idle">No grant. Each session requires a new system approval.</string>
+    <string name="projection_request">Open Android’s picker for this session</string>
+    <string name="projection_waiting">Waiting for Android’s picker.</string>
+    <string name="projection_active">Grant active. No image or audio output.</string>
+    <string name="projection_stop">End this grant</string>
+    <string name="projection_stopped">Grant ended. A new approval is required.</string>
+    <string name="projection_revoked">Android stopped the grant (onStop callback).</string>
+    <string name="projection_denied">Picker canceled. No grant started.</string>
+    <string name="projection_unavailable">Grant unavailable. Select EON as assistant and unlock the device.</string>
+    <string name="projection_channel">No-output projection grant</string>
+</resources>

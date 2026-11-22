@@ -14,6 +14,49 @@ pub enum Completeness {
     Incomplete,
 }
 
+/// Speculative intent only; a partial can be retracted and never authorizes an action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReflexHint {
+    Stop,
+    Affirmative,
+    RunTests,
+    QuietMode,
+}
+
+impl ReflexHint {
+    pub fn from_partial(text: &str) -> Option<Self> {
+        let text = text.trim().trim_end_matches(['.', '?', '!', ',', ';', ':']).trim_end();
+        [
+            ("stop", Self::Stop),
+            ("affirmative", Self::Affirmative),
+            ("run tests", Self::RunTests),
+            ("quiet mode", Self::QuietMode),
+        ]
+        .into_iter()
+        .find_map(|(command, hint)| text.eq_ignore_ascii_case(command).then_some(hint))
+    }
+}
+
+impl Completeness {
+    /// Conservative tier selection for a live Zipformer partial. An incidental
+    /// command inside a longer (possibly negated) sentence is not a fast reflex.
+    pub fn from_partial(text: &str) -> Self {
+        let text = text.trim().trim_end_matches(['.', '?', '!', ',', ';', ':']).trim_end();
+        if text.split_ascii_whitespace().next_back().is_some_and(|last| {
+            ["and", "or", "but", "in", "to", "for", "with", "then", "because", "if"]
+                .iter()
+                .any(|w| last.eq_ignore_ascii_case(w))
+        }) {
+            return Self::Incomplete;
+        }
+        if ReflexHint::from_partial(text).is_some() {
+            Self::Complete
+        } else {
+            Self::Ambiguous
+        }
+    }
+}
+
 pub const TIER_COMPLETE_MS: u32 = 300;
 pub const TIER_AMBIGUOUS_MS: u32 = 800;
 pub const TIER_INCOMPLETE_MS: u32 = 1150;
@@ -56,7 +99,9 @@ impl Endpointer {
         }
         self.silence_ms = self.silence_ms.saturating_add(frame_ms);
         if self.silence_ms >= silence_threshold_ms(completeness) {
-            let endpoint = Endpoint { silence_ms: self.silence_ms };
+            let endpoint = Endpoint {
+                silence_ms: self.silence_ms,
+            };
             self.speaking = false;
             self.silence_ms = 0;
             return Some(endpoint);
@@ -73,6 +118,14 @@ impl Endpointer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_partial_hint_can_be_retracted_and_does_not_match_an_embedded_command() {
+        assert_eq!(ReflexHint::from_partial("RUN TESTS."), Some(ReflexHint::RunTests));
+        assert_eq!(Completeness::from_partial("RUN TESTS AND"), Completeness::Incomplete);
+        assert_eq!(ReflexHint::from_partial("run tests and"), None);
+        assert_eq!(Completeness::from_partial("do not run tests"), Completeness::Ambiguous);
+    }
 
     /// Feeds `speech_frames` of speech, then silence of `silence_ms`, and reports whether an endpoint fired.
     fn endpoints_after(silence_ms: u32, completeness: Completeness) -> bool {
@@ -93,7 +146,10 @@ mod tests {
 
     #[test]
     fn incomplete_transcript_waits_for_1150_ms_and_survives_a_clause_pause() {
-        assert!(!endpoints_after(388, Completeness::Incomplete), "median clause pause must not end the turn");
+        assert!(
+            !endpoints_after(388, Completeness::Incomplete),
+            "median clause pause must not end the turn"
+        );
         assert!(!endpoints_after(800, Completeness::Incomplete));
         assert!(endpoints_after(1184, Completeness::Incomplete));
     }

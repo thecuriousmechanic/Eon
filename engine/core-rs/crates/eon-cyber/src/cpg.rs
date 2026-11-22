@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use eon_primitives::{EonError, EonResult};
-use tree_sitter::{Language, Node, Parser};
+use tree_sitter::{Language, Node, Parser, Tree};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lang {
@@ -244,10 +244,14 @@ struct Analysis {
     imports: Vec<Import>,
 }
 
-fn analyze(lang: Lang, source: &str) -> EonResult<Analysis> {
+pub(crate) fn parse(lang: Lang, source: &str) -> EonResult<Tree> {
     let mut parser = Parser::new();
     parser.set_language(&lang.language()).map_err(parse_error)?;
-    let tree = parser.parse(source, None).ok_or_else(|| parse_error("parser produced no tree"))?;
+    parser.parse(source, None).ok_or_else(|| parse_error("parser produced no tree"))
+}
+
+fn analyze(lang: Lang, source: &str) -> EonResult<Analysis> {
+    let tree = parse(lang, source)?;
     let mut walk = Walk {
         lang,
         source: source.as_bytes(),
@@ -302,12 +306,48 @@ pub struct FunctionBlock {
 
 /// Lists every function definition in `source` in source order. Nested functions are included.
 pub fn function_blocks(lang: Lang, source: &str) -> EonResult<Vec<FunctionBlock>> {
-    let mut parser = Parser::new();
-    parser.set_language(&lang.language()).map_err(parse_error)?;
-    let tree = parser.parse(source, None).ok_or_else(|| parse_error("parser produced no tree"))?;
+    let tree = parse(lang, source)?;
     let mut blocks = Vec::new();
     collect_blocks(lang, tree.root_node(), source, &mut blocks);
     Ok(blocks)
+}
+
+/// Exact, unique top-level function in a syntactically complete source. Unlike the
+/// inspection API this never selects a method, a nested function or a recovered tree.
+/// In Python, uniqueness is checked among function and class declarations directly in the module,
+/// including decorated ones. Only undecorated functions are editable; assignments are not analyzed.
+pub fn checked_top_level_function(lang: Lang, source: &str, symbol: &str) -> EonResult<FunctionBlock> {
+    let tree = parse(lang, source)?;
+    let root = tree.root_node();
+    if root.has_error() {
+        return Err(parse_error("source contains syntax errors"));
+    }
+    let mut cursor = root.walk();
+    let mut found = root.named_children(&mut cursor).filter(|node| {
+        let definition = match (lang, node.kind()) {
+            (Lang::Python, "decorated_definition") => node.child_by_field_name("definition"),
+            (Lang::Python, "class_definition") => Some(*node),
+            (_, kind) if kind == lang.function_kind() => Some(*node),
+            _ => None,
+        };
+        definition
+            .and_then(|def| def.child_by_field_name("name"))
+            .is_some_and(|name| &source[name.byte_range()] == symbol)
+    });
+    let first = found.next();
+    if found.next().is_some() {
+        return Err(parse_error("ambiguous top-level function"));
+    }
+    let node = first
+        .filter(|node| node.kind() == lang.function_kind())
+        .ok_or_else(|| parse_error("top-level function not found"))?;
+    Ok(FunctionBlock {
+        name: symbol.into(),
+        start_line: node.start_position().row + 1,
+        start_byte: node.start_byte(),
+        end_byte: node.end_byte(),
+        text: source[node.byte_range()].into(),
+    })
 }
 
 fn collect_blocks(lang: Lang, node: Node, source: &str, blocks: &mut Vec<FunctionBlock>) {

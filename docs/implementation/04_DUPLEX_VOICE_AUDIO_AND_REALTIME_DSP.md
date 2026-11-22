@@ -119,9 +119,11 @@ Natural multi-clause technical directives (*"Audit the mesh transport crate, and
 
 | Tier | Required Silence ($p_{\text{speech}} < 0.35$) | Activation Condition | Purpose |
 |---|---|---|---|
-| **Fast Reflex (`300 ms`)** | `300 ms` | $T_{\text{partial}}$ has `2..=6` words, matches a complete Tier 0 command grammar (e.g., `"stop"`, `"affirmative"`, `"run tests"`, `"quiet mode"`), AND does **not** end with an open continuation token. | Crisp `< 170ms` response on short commands. |
+| **Fast Reflex (`300 ms`)** | `300 ms` | $T_{\text{partial}}$ matches a complete Tier 0 command grammar (e.g., `"stop"`, `"affirmative"`, `"run tests"`, `"quiet mode"`), AND does **not** end with an open continuation token. | Shorter confirmation delay for complete commands. With 32 ms VAD frames, this tier needs 320 ms of classified silence. |
 | **Standard Clause (`800 ms`)** | `800 ms` | Default for all general spoken queries and engineering instructions. | Cuts premature mid-sentence splits from `~36%` down to `< 3%`. |
 | **Continuation Hold (`1,150 ms`)** | `1,150 ms` | $T_{\text{partial}}$ ends with a conjunction, preposition, or dangling operator (`"and"`, `"or"`, `"but"`, `"in"`, `"to"`, `"for"`, `"with"`, `"then"`, `"because"`, `"if"`). | Waits while the operator recalls a filename or symbol name. |
+
+The driven rig responder waits for this endpoint and a nonempty final transcript before it queues a cached prefix. Faster synthesis alone therefore cannot meet a 170 ms acoustic target on turns where VAD remains active through the end of speech. Endpoint time is not the start of the TTFA clock: use the last active input and first sustained speaker output on the same recording (Manual 06 §3.3).
 
 **Post-Reply Session Split (`300 ms` Holdoff)**: When TTS transitions `SPEAKING -> RETURNING_TO_DORMANT`, hold VAD invocation closed for `300 ms` while physical room reverb decays, then force a **session ID split** in the VAD state machine so an operator speaking `350 ms` after Ciel finishes is immediately accepted as a fresh turn rather than suppressed as trailing TTS echo!
 

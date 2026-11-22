@@ -1,0 +1,30 @@
+<resources>
+    <string name="floating_controls">Floating HUD controls</string>
+    <string name="floating_explanation">Show a small, read-only EON card over other apps until you stop it or lock the screen. It takes no touches and reads no screen content. Android and other apps may hide it or reject touches under it; it is hidden on EON controls. Use the notification to check a model profile, meter a built-in tone (not live audio), or stop. No role or accessibility service is needed.</string>
+    <string name="floating_mic_help">Optional live microphone: request Android permission first. A separate Start tap returns to your previous app and shows up to six seconds of local microphone levels on the card. No audio is saved or sent. Stop from the notification, reopen EON, or lock the screen.</string>
+    <string name="floating_mic_start">Start 6-second live mic and return to app</string>
+    <string name="floating_mic_on">EON · Mic on</string>
+    <string name="floating_mic_level">Mic on · %1$d%% RMS</string>
+    <string name="floating_mic_done">Mic off · peak %1$d%% RMS</string>
+    <string name="floating_mic_active_notice">Live microphone meter · up to six seconds</string>
+    <string name="floating_mic_unavailable">Mic off. Review Android microphone access first. An existing grant alone cannot start the meter.</string>
+    <string name="floating_review_display">Review display over other apps</string>
+    <string name="floating_review_notifications">Allow HUD notifications</string>
+    <string name="floating_notification_settings">Manage notification settings</string>
+    <string name="floating_start">Start floating HUD</string>
+    <string name="floating_stop">Stop floating HUD</string>
+    <string name="floating_display_needed">Off. In Android Settings select EON and allow display over other apps, then return here.</string>
+    <string name="floating_notification_needed">Off. Allow the HUD’s ongoing notification, then return here.</string>
+    <string name="floating_ready">Off. Access is available; nothing starts until you tap Start.</string>
+    <string name="floating_running">HUD started. Press Home to see the card. Stop here or in its notification.</string>
+    <string name="floating_unavailable">Could not start the HUD. Check access and try again.</string>
+    <string name="floating_settings_unavailable">This Android settings page is unavailable.</string>
+    <string name="floating_channel">Floating HUD controls</string>
+    <string name="floating_notification_title">EON floating HUD is on</string>
+    <string name="floating_notification_text">Read-only card · microphone off</string>
+    <string name="floating_check">Check profile</string>
+    <string name="floating_tone">Meter built-in tone</string>
+    <string name="floating_idle">EON · Idle</string>
+    <string name="floating_tone_reading">Built-in tone · measuring</string>
+    <string name="floating_tone_levels">Built-in tone · peak %1$d%% RMS</string>
+</resources>

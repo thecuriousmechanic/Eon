@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use eon_primitives::{EonError, EonResult, TaskId};
+use eon_primitives::{EonError, EonResult, TaskId, dag::topological_order};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskState {
@@ -32,6 +32,24 @@ pub struct Workflow {
     tasks: BTreeMap<TaskId, Task>,
 }
 
+/// Project the validated definition into a fresh execution graph. All tasks start
+/// pending; capability contracts and objective metadata stay in the immutable definition.
+impl From<&crate::model::Workflow> for Workflow {
+    fn from(definition: &crate::model::Workflow) -> Self {
+        let tasks = definition
+            .tasks()
+            .iter()
+            .map(|(id, t)| {
+                (
+                    id.clone(),
+                    Task::new(id.clone(), t.dependencies.iter().cloned()),
+                )
+            })
+            .collect();
+        Self { tasks }
+    }
+}
+
 impl Workflow {
     pub fn new() -> Self {
         Self::default()
@@ -44,8 +62,13 @@ impl Workflow {
                 task.id
             )));
         }
-        self.tasks.insert(task.id.clone(), task);
-        self.validate_topological_order()
+        let id = task.id.clone();
+        self.tasks.insert(id.clone(), task);
+        if let Err(err) = self.validate_topological_order() {
+            self.tasks.remove(&id);
+            return Err(err);
+        }
+        Ok(())
     }
 
     pub fn get(&self, id: &TaskId) -> Option<&Task> {
@@ -79,41 +102,7 @@ impl Workflow {
 
     /// Kahn's algorithm: every dependency must exist and the graph must have no cycle.
     pub fn validate_topological_order(&self) -> EonResult<()> {
-        let mut in_degree: BTreeMap<&TaskId, usize> = BTreeMap::new();
-        for task in self.tasks.values() {
-            for dep in &task.dependencies {
-                if !self.tasks.contains_key(dep) {
-                    return Err(EonError::ValidationError(format!(
-                        "task {} depends on unknown task {dep}",
-                        task.id
-                    )));
-                }
-            }
-            in_degree.insert(&task.id, task.dependencies.len());
-        }
-
-        let mut queue: Vec<&TaskId> = in_degree
-            .iter()
-            .filter(|&(_, &d)| d == 0)
-            .map(|(id, _)| *id)
-            .collect();
-        let mut visited = 0;
-        while let Some(id) = queue.pop() {
-            visited += 1;
-            for task in self.tasks.values().filter(|t| t.dependencies.contains(id)) {
-                let degree = in_degree.get_mut(&task.id).expect("every task is indexed");
-                *degree -= 1;
-                if *degree == 0 {
-                    queue.push(&task.id);
-                }
-            }
-        }
-        if visited != self.tasks.len() {
-            return Err(EonError::ValidationError(
-                "workflow contains a dependency cycle".to_string(),
-            ));
-        }
-        Ok(())
+        topological_order(&self.tasks, |t| &t.dependencies).map(|_| ())
     }
 
     /// Replaces a completed continuation `parent` with `children`. Downstream tasks that depended
@@ -278,8 +267,13 @@ mod tests {
     }
 
     #[test]
-    fn insert_rejects_unknown_dependency() {
+    fn rejected_insert_leaves_existing_tasks_untouched() {
         let mut wf = Workflow::new();
+        wf.insert(Task::new(id("1"), [])).unwrap();
+        let before = wf.clone();
         assert!(wf.insert(Task::new(id("40"), [id("99")])).is_err());
+        assert_eq!(wf, before);
+        assert!(wf.insert(Task::new(id("40"), [id("40")])).is_err());
+        assert_eq!(wf, before);
     }
 }

@@ -2,11 +2,13 @@
 //!
 //! The initiator offers its version vector and its full state. The responder applies that state and answers with the
 //! updates the initiator lacks, and the initiator applies the answer. Both sides converge after one round trip. Repeating
-//! a round is harmless because imports are idempotent.
+//! a round is harmless because imports are idempotent. Paired nodes instead use the incremental protocol in
+//! [`crate::paired`]; the unpinned full-state protocol is retained for existing low-level callers.
 
 use eon_primitives::{EonError, EonResult};
 use iroh::EndpointAddr;
 
+use crate::qos::TrafficClass;
 use crate::sync::Replica;
 use crate::transport::PeerNode;
 
@@ -40,15 +42,15 @@ fn split(bytes: &[u8]) -> EonResult<(&[u8], &[u8])> {
         .try_into()
         .map_err(|_| exchange_err("offer header is malformed"))?;
     let len = u32::from_le_bytes(header) as usize;
-    let version = bytes
-        .get(4..4 + len)
-        .ok_or_else(|| exchange_err("offer version is truncated"))?;
-    Ok((version, &bytes[4 + len..]))
+    bytes[4..].split_at_checked(len).ok_or_else(|| exchange_err("offer version is truncated"))
 }
 
 /// Offers `replica` to `peer` and applies the answer. Afterwards `replica` holds everything `peer` held.
 pub async fn exchange(client: &PeerNode, peer: EndpointAddr, replica: &Replica) -> EonResult<()> {
-    let reply = client.request(peer, &offer(replica)?).await?;
+    if client.paired_id().is_some() {
+        return crate::paired::sync(client, peer, replica).await;
+    }
+    let reply = client.request_with_class(peer, TrafficClass::Delta, &offer(replica)?).await?;
     replica.apply(&reply)
 }
 

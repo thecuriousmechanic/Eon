@@ -59,6 +59,10 @@ impl BulkPacer {
         }
     }
 
+    pub(crate) fn next_bulk_at(&self) -> Duration {
+        self.next_bulk_at
+    }
+
     /// Admits a bulk chunk of `bytes` requested at `at`. Returns the time it may start, and reserves link time for it.
     pub fn admit(&mut self, at: Duration, bytes: usize) -> Duration {
         let start = at.max(self.next_bulk_at);

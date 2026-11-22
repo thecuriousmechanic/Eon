@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.eon.test.uidtraffic">
+    <uses-sdk android:minSdkVersion="35" android:targetSdkVersion="35" />
+    <!-- Needed only to generate the bounded loopback fixture. Not needed for TrafficStats. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:testOnly="true" android:allowBackup="false" />
+    <instrumentation android:name=".LoopbackTest" android:targetPackage="org.eon.test.uidtraffic" />
+</manifest>

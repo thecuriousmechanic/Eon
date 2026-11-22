@@ -1,0 +1,4 @@
+<resources>
+    <!-- Earlier releases lack the per-node accessibilityDataSensitive signal. -->
+    <bool name="focused_control_supported">true</bool>
+</resources>

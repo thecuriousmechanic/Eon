@@ -1,0 +1,170 @@
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
+    <ScrollView
+        android:id="@+id/hud_panel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_margin="12dp"
+        android:background="@drawable/voice_hud_card"
+        android:clipToOutline="true"
+        android:elevation="4dp"
+        android:visibility="gone">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="8dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+                <com.eon.assistant.VoiceHudTrack
+                    android:id="@+id/hud_track"
+                    android:layout_width="44dp"
+                    android:layout_height="24dp"
+                    android:importantForAccessibility="no" />
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="8dp">
+                    <TextView
+                        android:id="@+id/hud_title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:accessibilityHeading="true"
+                        android:text="@string/voice_hud_title"
+                        android:textColor="#13292D"
+                        android:textStyle="bold" />
+                    <TextView
+                        android:id="@+id/hud_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:accessibilityLiveRegion="polite"
+                        android:textColor="#263F43" />
+                </LinearLayout>
+                <ImageButton
+                    android:id="@+id/hud_toggle"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:filterTouchesWhenObscured="true"
+                    android:src="@android:drawable/arrow_down_float"
+                    android:tint="#263F43" />
+                <ImageButton
+                    android:id="@+id/hud_end"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/close_voice_session"
+                    android:src="@android:drawable/ic_menu_close_clear_cancel"
+                    android:tint="#263F43" />
+            </LinearLayout>
+            <TextView
+                android:id="@+id/hud_context"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:accessibilityLiveRegion="polite"
+                android:saveEnabled="false"
+                android:textColor="#13292D"
+                android:visibility="gone" />
+            <LinearLayout
+                android:id="@+id/hud_details"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="8dp"
+                android:visibility="gone">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/voice_hud_privacy"
+                    android:textColor="#263F43" />
+                <Button
+                    android:id="@+id/hud_mic"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:filterTouchesWhenObscured="true"
+                    android:text="@string/voice_mic_start" />
+                <TextView
+                    android:id="@+id/hud_mic_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#13292D"
+                    android:visibility="gone" />
+                <com.eon.assistant.ToneGraph
+                    android:id="@+id/hud_mic_graph"
+                    android:layout_width="match_parent"
+                    android:layout_height="32dp"
+                    android:background="#DFEBE9"
+                    android:importantForAccessibility="no"
+                    android:visibility="gone" />
+                <TextView
+                    android:id="@+id/hud_result"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:accessibilityLiveRegion="polite"
+                    android:textColor="#13292D"
+                    android:textStyle="bold" />
+                <Button
+                    android:id="@+id/hud_check"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:filterTouchesWhenObscured="true"
+                    android:minHeight="48dp"
+                    android:text="@string/voice_hud_check" />
+                <Button
+                    android:id="@+id/hud_tone_scan"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:filterTouchesWhenObscured="true"
+                    android:minHeight="48dp"
+                    android:text="@string/voice_tone_scan" />
+                <TextView
+                    android:id="@+id/hud_tone_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:accessibilityLiveRegion="polite"
+                    android:textColor="#13292D"
+                    android:visibility="gone" />
+                <com.eon.assistant.ToneGraph
+                    android:id="@+id/hud_tone_graph"
+                    android:layout_width="match_parent"
+                    android:layout_height="54dp"
+                    android:background="#DFEBE9"
+                    android:importantForAccessibility="no"
+                    android:visibility="gone" />
+                <Button
+                    android:id="@+id/hud_tone_clear"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:filterTouchesWhenObscured="true"
+                    android:minHeight="48dp"
+                    android:text="@string/voice_tone_clear" />
+                <Button
+                    android:id="@+id/hud_tasks"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:filterTouchesWhenObscured="true"
+                    android:minHeight="48dp"
+                    android:text="@string/voice_tasks_sample" />
+                <TextView
+                    android:id="@+id/hud_task_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:accessibilityLiveRegion="polite"
+                    android:textColor="#13292D"
+                    android:visibility="gone" />
+                <Button
+                    android:id="@+id/hud_controls"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:filterTouchesWhenObscured="true"
+                    android:minHeight="48dp"
+                    android:text="@string/open_eon_controls" />
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+</merge>
