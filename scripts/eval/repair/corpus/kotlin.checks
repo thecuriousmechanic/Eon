@@ -1,0 +1,27 @@
+// @case nullable-member-chain
+check(initials(null) == null && initials("") == null && initials("Elm") == 'E')
+// @case primitive-vararg-spread
+check(plotWidth(intArrayOf(-3, 7, 1)) == 10 && plotWidth(intArrayOf()) == 0)
+// @case implicit-numeric-widening
+check(fromSamples(3_000_000) == 3_000_000_000L && fromSamples(-2) == -2000L)
+// @case runtime-const-initializer
+check(diagonal(0.0) == 0.0 && diagonal(3.0) in 4.24263..4.24265)
+// @case uninitialized-supertype
+val scale: UnitScale = DoubleScale()
+check(scale.scale(9) == 18 && scale.scale(-2) == -4)
+// @case indexing-convention
+check(firstLabel(Strip(listOf(" elm ", "oak"))) == "elm" && Strip(listOf("y", " x "))[1] == "x")
+// @case data-constructor-property
+val original = Book("Atlas", 2)
+check(reprint(original) == Book("Atlas", 3) && original.edition == 2)
+// @case writable-lazy-delegate
+val values = mutableListOf(1, 2)
+val w = Weights(values)
+values.add(4)
+check(w.sum == 7)
+values.clear()
+check(w.sum == 7 && Weights(values).sum == 0)
+// @case boxed-primitive-array
+check(sortedMarks(listOf(8, 1, 3)).contentEquals(intArrayOf(1, 3, 8)) && sortedMarks(emptyList()).isEmpty())
+// @case regex-string-escape
+check(numbers("a12/b3") == listOf("12", "3") && numbers("abc") == emptyList<String>())

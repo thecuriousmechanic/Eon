@@ -1,6 +1,8 @@
 //! Attaches the execve probe and checks that it counts real program launches. Needs root (CAP_BPF) and the object built by
 //! `scripts/build_bpf.sh`. Run with the built test binary under sudo; see the test's ignore reason.
 
+#![cfg(target_os = "linux")]
+
 use std::path::PathBuf;
 use std::process::Command;
 

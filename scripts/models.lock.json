@@ -45,6 +45,33 @@
   },
   "models": [
     {
+      "id": "kokoro-v1.0-release-int8",
+      "dest": "perception/models/tts/release/kokoro-v1.0.int8.onnx",
+      "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx",
+      "sha256": "6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb",
+      "size_bytes": 92361271,
+      "license": "Apache-2.0",
+      "notes": "Explicit opt-in Taylor Chu INT8 export (tokens/style/speed to audio). Not the graph used by default profiles. Use the pinned af_heart voice."
+    },
+    {
+      "id": "bge-micro-v2-int8",
+      "dest": "perception/models/embeddings/bge-micro-v2/model_quantized.onnx",
+      "url": "https://huggingface.co/TaylorAI/bge-micro-v2/resolve/3edf6d7de0faa426b09780416fe61009f26ae589/onnx/model_quantized.onnx",
+      "sha256": "ed65e36025aa94cb74207dab863c85452919ec0ab7df3512092932aa22c9a33a",
+      "size_bytes": 17409774,
+      "license": "MIT",
+      "notes": "Also verified byte-for-byte in the public tomlm/LottaDB test-assets-v1 release, bge-micro-v2.tar.gz (SHA256 132204045640c19ca555942dcaf82687dbf1cf8b38e1038121d2b6add76ec6e2). Opt-in; not included in hardware profiles."
+    },
+    {
+      "id": "bge-micro-v2-tokenizer",
+      "dest": "perception/models/embeddings/bge-micro-v2/tokenizer.json",
+      "url": "https://huggingface.co/TaylorAI/bge-micro-v2/resolve/3edf6d7de0faa426b09780416fe61009f26ae589/tokenizer.json",
+      "sha256": "cb374d6bc042c22455946f4e09a89d29882a199fdaf8fb25be00dc8b8857a448",
+      "size_bytes": 711661,
+      "license": "MIT",
+      "notes": "Complete tokenizer pipeline for bge-micro-v2-int8; also verified in the same test-assets-v1 release."
+    },
+    {
       "id": "zipformer-en-2023-06-26-encoder-int8",
       "dest": "perception/models/asr/encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
       "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-26.tar.bz2",
@@ -103,6 +130,43 @@
         "member": "tokens.txt"
       },
       "notes": "Pinned from the upstream k2-fsa release tarball; the same-named Hugging Face mirror has different bytes."
+    },
+    {
+      "id": "voice-test-zipformer-0",
+      "dest": "engine/core-rs/crates/eon-voice/tests/fixtures/0.wav",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-26.tar.bz2",
+      "sha256": "6bc58a4efdf20daac252b6b1502632601a71efe0308f6757dc1eda34891a7e4f",
+      "size_bytes": 212044,
+      "archive": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-26.tar.bz2",
+        "sha256": "639e25b578e9e997131402199419c13a941f8e4e198e2da1ce57dbf5cf401282",
+        "size_bytes": 310414022,
+        "member": "0.wav"
+      },
+      "notes": "Upstream Zipformer test recording. Not shipped with the app or included in hardware profiles."
+    },
+    {
+      "id": "voice-test-librispeech-dev-clean",
+      "dest": "perception/models/downloads/dev-clean.tar.gz",
+      "url": "https://www.openslr.org/resources/12/dev-clean.tar.gz",
+      "sha256": "76f87d090650617fca0cac8f88b9416e0ebf80350acb97b343a85fa903728ab3",
+      "size_bytes": 337926286,
+      "license": "CC BY 4.0",
+      "notes": "LibriSpeech (Panayotov et al.), OpenSLR 12. Offline evaluation only, not included in hardware profiles."
+    },
+    {
+      "id": "voice-test-sensevoice-en",
+      "dest": "engine/core-rs/crates/eon-voice/tests/fixtures/en.wav",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2",
+      "sha256": "eb1eb008904465b74c304aad8342e8c7d3c6e61ffe9f66adcaca9cf0f76a93f4",
+      "size_bytes": 228908,
+      "archive": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2",
+        "sha256": "7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e",
+        "size_bytes": 163002883,
+        "member": "en.wav"
+      },
+      "notes": "Upstream SenseVoice test recording. Not shipped with the app or included in hardware profiles."
     },
     {
       "id": "silero-vad-v5",
@@ -178,6 +242,33 @@
       "notes": "Opt-in only (not in any profile). Upstream README: icon_detect is AGPL. Pulling it into a distributed build triggers AGPL source obligations."
     },
     {
+      "id": "qwen2.5-vl-3b-instruct-q4_k_m",
+      "dest": "perception/models/vlm/Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf",
+      "url": "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/5037fcf163dd95d1e41d1974465f0898ed108ca2/Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf",
+      "sha256": "d02fe9b69ad8cadbbd228e387667af66612c44bed29ffc8eb1e7caf9ac486c12",
+      "size_bytes": 1929901056,
+      "license": "Qwen Research License Agreement",
+      "notes": "Opt-in evaluation, not in any hardware profile. ggml-org conversion of Qwen/Qwen2.5-VL-3B-Instruct; use with qwen2.5-vl-3b-mmproj-f16. The original weights' LICENSE is non-commercial research/evaluation, notwithstanding the conversion card's apache-2.0 tag: https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct/blob/66285546d2b821cf421d4f5eb2576359d3770cd3/LICENSE"
+    },
+    {
+      "id": "qwen2.5-vl-3b-mmproj-f16",
+      "dest": "perception/models/vlm/mmproj-Qwen2.5-VL-3B-Instruct-f16.gguf",
+      "url": "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/5037fcf163dd95d1e41d1974465f0898ed108ca2/mmproj-Qwen2.5-VL-3B-Instruct-f16.gguf",
+      "sha256": "b9160fe9d814d1fadf68395677468534778b39ac33c2e7561b7b218626e60d5e",
+      "size_bytes": 1338428128,
+      "license": "Qwen Research License Agreement",
+      "notes": "Matching vision tower/projector from the same ggml-org revision as qwen2.5-vl-3b-instruct-q4_k_m. Same upstream non-commercial research/evaluation restriction; outside hardware profiles."
+    },
+    {
+      "id": "omniparser-v2-icon-detect-onnx",
+      "dest": "perception/models/vision/omniparser/icon_detect/model.onnx",
+      "url": "https://huggingface.co/onnx-community/OmniParser-v2.0_icon_detect/resolve/f0fbccdf5f56c2a689f669b95cb4f67bcf4e12b1/onnx/model.onnx",
+      "sha256": "c0d3d261e3368a5e51fe0d632c5d62e4bd4da489ac4b95fbbee450eb640e36fe",
+      "size_bytes": 80305670,
+      "license": "AGPL-3.0",
+      "notes": "Opt-in only, outside all hardware profiles. ONNX Community's static FP32 YOLO11m export of the Microsoft v2 icon_detect checkpoint, not a Microsoft-published ONNX file. Embedded weights, 1x3x640x640 input, 1x5x8400 output; no Python or .pt loading. See docs/TECH_STACK_AND_TOOLCHAINS.md#omniparser-v2-icon-proposals for validation and licensing."
+    },
+    {
       "id": "nemotron-asr-160ms-encoder-int8",
       "dest": "perception/models/asr/nemotron-asr-160ms/encoder.int8.onnx",
       "url": "https://huggingface.co/csukuangfj2/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-160ms-int8-2026-06-11/resolve/main/encoder.int8.onnx",
@@ -208,6 +299,15 @@
       "sha256": "729cc103155bafa785f9cd45746cd41cabe97eab7182fc04d594129587958f8a",
       "size_bytes": 131440,
       "license": "OpenMDW"
+    },
+    {
+      "id": "camplusplus-zh-en-advanced",
+      "dest": "perception/models/speaker/camplusplus_zh_en_advanced.onnx",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
+      "sha256": "53cab20ba8f2eb2f6e2d89ecc18e88ef3222169b61b4419cbc13666744a4574b",
+      "size_bytes": 28281165,
+      "license": "Apache-2.0",
+      "notes": "Opt-in sherpa-onnx conversion of https://modelscope.cn/models/iic/speech_campplus_sv_zh_en_16k-common_advanced. Requires a new enrollment; not compatible with WeSpeaker vectors."
     },
     {
       "id": "wespeaker-resnet34",

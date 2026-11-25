@@ -1,0 +1,36 @@
+// @case reassigned-binding
+assert_eq!(peak(&[-5,-2,-9]), -2); assert_eq!(peak(&[8,1,7]), 8);
+// @case discarded-tail
+assert_eq!(remaining(2,7), 5); assert_eq!(remaining(7,2), 0);
+// @case missing-slice-borrow
+assert_eq!(batch_sum(255,1), 256); assert_eq!(batch_sum(0,0), 0);
+// @case missing-writer-trait
+assert_eq!(row_label(2), "R002"); assert_eq!(row_label(1050), "R1050");
+// @case consumed-collection
+assert_eq!(mean_length(vec!["oak".into(), "spruce".into()]), 4); assert_eq!(mean_length(vec![]), 0);
+// @case spurious-generic-argument
+assert_eq!(reflected_span(-3,8), (-8,3)); assert_eq!(reflected_span(0,0), (0,0));
+// @case nested-result
+assert_eq!(parse_minutes("  12 "), Ok(720)); assert!(parse_minutes("no").is_err());
+// @case field-as-method
+assert_eq!(area(Tile { width: 3, height: 7 }), 21); assert_eq!(area(Tile { width: 0, height: 9 }), 0);
+// @case singleton-tuple
+assert_eq!(singleton(17), (17,)); assert_eq!(singleton(String::from("straw")).0, "straw");
+// @case stale-inclusive-range
+assert_eq!((roman_band(0), roman_band(3), roman_band(4), roman_band(9)), ("other","low","mid","other"));
+// @case unboxed-recursive-node
+let Trail::Step(2, tail) = prepend(2, prepend(7, Trail::End)) else { panic!() };
+assert!(matches!(*tail, Trail::Step(7, _)));
+// @case missing-supertrait
+let p = GridPoint { x: 4, y: -3 }; let q = shift(p, 8);
+assert_eq!((q.x, q.y, p.x), (12, -3, 4));
+// @case reference-instead-of-element
+assert_eq!(middle(&[1,8,2]), 8); assert_eq!(middle(&[-9]), -9);
+// @case missing-struct-lifetime
+let text = String::from(" hello \n"); assert_eq!(trimmed(&text).text, "hello"); assert_eq!(trimmed(" ").text, "");
+// @case external-crate-path
+assert_eq!(palette::channel(10), 30); assert_eq!(palette::channel(100), 255);
+// @case match-arm-terminator
+assert_eq!(warm(&[-4,17,18,40]), 2); assert_eq!(warm(&[]), 0);
+// @case mismatched-format-slots
+assert_eq!(banner("News", 12), "News / 12"); assert_eq!(banner("", 0), " / 0");

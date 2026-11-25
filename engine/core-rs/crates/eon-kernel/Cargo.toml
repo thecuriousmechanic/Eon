@@ -5,13 +5,39 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+# The in-memory scheduler needs neither workstation tools nor durable journal/recovery.
+default = ["host"]
+host = ["dep:diffy", "dep:eon-cyber", "dep:eon-foundation"]
+
 [dependencies]
-diffy = "0.4"
-eon-cyber = { path = "../eon-cyber" }
-eon-foundation = { version = "0.1.0", path = "../eon-foundation" }
-eon-primitives = { path = "../eon-primitives" }
+blake3 = "1"
+diffy = { version = "0.4", optional = true }
+eon-cyber = { path = "../eon-cyber", default-features = false, optional = true }
+eon-foundation = { version = "0.1.0", path = "../eon-foundation", optional = true }
+eon-primitives = { path = "../eon-primitives", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [dev-dependencies]
 proptest = "1"
 tempfile = "3"
 
+[[test]]
+name = "dynamic_dag_tests"
+required-features = ["host"]
+
+[[test]]
+name = "eval_components"
+required-features = ["host"]
+
+[[test]]
+name = "eval_harness"
+# Physical recordings and the provisioned native toolchains are explicit opt-ins.
+# `cargo test --test eval_harness` still selects this target by name.
+test = false
+required-features = ["host"]
+
+[[test]]
+name = "recovery_tests"
+required-features = ["host"]

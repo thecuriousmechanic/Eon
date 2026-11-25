@@ -94,6 +94,13 @@ EON never feeds continuous 60 FPS video directly into an LLM/VLM. Instead, `eon-
 
 ### 3.2 30-Second Temporal Visual Ring Buffer
 - A circular memory buffer in shared memory holding the last 30 seconds of compressed JPEG keyframes (~15–30 MB RAM footprint).
+
+On Linux, `SharedVisualMemory` stores each accepted JPEG in a separate sealed `memfd`.
+The capture owner selects frames with `recent(since_ms, now_ms)` and can pass an individual
+descriptor to an authorized local reader. A reader can map that image but cannot alter it or
+read adjacent frames. The sampling clock and byte budget bound what the producer retains,
+not the lifetime of copies a recipient has already received. The buffer does not capture a
+screen or send frames by itself.
 - Enables zero-latency retrospective analysis:
   *"User: What was the error message that just disappeared?"*  
   Ciel immediately queries the buffer frames from $t_{-5s}$ to $t_{now}$, passes the cropped frames to OCR/VLM, and answers factually.
@@ -161,4 +168,3 @@ Powered by **`wgpu`** (or Jetpack Compose Multiplatform + Skia) for high-perform
 In modern terminal emulators (Ghostty, WezTerm, Kitty, Alacritty with Sixel):
 - Uses `ratatui-image` supporting **Kitty Graphics Protocol** and **Sixel**.
 - Renders inline architectural diagrams, thumbnail previews of captured screen frames, and high-resolution plots directly inside the console session.
-

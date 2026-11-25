@@ -19,6 +19,23 @@ pub enum IntegrityLevel {
     Trusted = 2,
 }
 
+/// Binary authority tag for capability outcomes. Endorsing a scalar does not
+/// make its source an authenticated operator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CognitiveTaint {
+    TrustedOperator,
+    UntrustedExternal,
+}
+
+impl From<IntegrityLevel> for CognitiveTaint {
+    fn from(level: IntegrityLevel) -> Self {
+        match level {
+            IntegrityLevel::Trusted => Self::TrustedOperator,
+            IntegrityLevel::Endorsed | IntegrityLevel::Untrusted => Self::UntrustedExternal,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ConfidentialityLevel {
     Public = 0,

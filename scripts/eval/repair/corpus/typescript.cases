@@ -1,0 +1,51 @@
+// @case collection-index-vs-value
+function headings(rows: {title: string}[]): string[] {
+    const result: string[] = [];
+    for (const row in rows) { result.push(row.title); }
+    return result;
+}
+// @case member-spelling
+function uppercaseTags(tags: string[]): string[] {
+    return tags.map(tag => tag.toUpperCse());
+}
+// @case date-arithmetic
+function elapsed(start: Date, end: Date): number {
+    return end - start;
+}
+// @case arrow-object-body
+function named(names: string[]): {label: string}[] {
+    return names.map(label => { label: label.trim() });
+}
+// @case set-array-boundary
+function uniqueCodes(codes: string[]): string[] {
+    return new Set(codes);
+}
+// @case empty-promise-resolution
+function nextBeat(beats: number[]): Promise<unknown> {
+    return new Promise(resolve => {
+        beats.push(beats.length);
+        resolve();
+    });
+}
+// @case redundant-private-modifier
+class Meter {
+    private #total = 0;
+    add(n: number) { return this.#total += n; }
+}
+// @case implicit-override
+class Spacing { units(): number { return 1; } }
+class WideSpacing extends Spacing { units(): number { return 2 * super.units(); } }
+// @case fallback-precedence
+function beforeLimit(position: number, limits: {stop?: number}): boolean {
+    return position < limits.stop ?? 10;
+}
+// @case readonly-type-syntax
+function extrema(points: readonly Array<number>): [number, number] {
+    return [Math.min(...points), Math.max(...points)];
+}
+// @case lost-tuple-arity
+function ratio(n: number, d: number): number { return n / d; }
+function aspect(width: number, height: number): number {
+    const dims = [width, height];
+    return ratio(...dims);
+}

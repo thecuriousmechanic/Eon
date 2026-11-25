@@ -1,0 +1,13 @@
+<resources>
+    <item type="id" name="demo_counter" />
+    <item type="id" name="demo_samples" />
+    <item type="id" name="demo_review_click" />
+    <item type="id" name="demo_review_scroll" />
+    <item type="id" name="demo_confirm" />
+    <item type="id" name="demo_cancel" />
+    <item type="id" name="demo_status" />
+    <item type="id" name="demo_sample_mode" />
+    <item type="id" name="demo_field_label" />
+    <item type="id" name="demo_field" />
+    <item type="id" name="demo_locate_field" />
+</resources>

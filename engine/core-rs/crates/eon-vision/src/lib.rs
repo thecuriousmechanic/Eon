@@ -1,7 +1,31 @@
-//! EON Multimodal Vision: OmniParser-v2 UI element detector, adaptive keyframe sampler,
-//! and 30-second temporal visual ring buffer.
+//! UI geometry, bounded temporal sampling and opt-in local inference on caller-supplied stills.
+
+pub mod keyframes;
+#[cfg(feature = "paddle-ocr")]
+pub mod ocr;
+#[cfg(feature = "omniparser-icons")]
+pub mod omniparser;
+#[cfg(all(target_os = "linux", feature = "qwen-vl"))]
+pub mod qwen_vl;
+#[cfg(target_os = "linux")]
+pub mod shared;
+#[cfg(any(
+    feature = "paddle-ocr",
+    feature = "omniparser-icons",
+    all(target_os = "linux", feature = "qwen-vl")
+))]
+mod still;
 
 pub use eon_primitives::*;
+
+/// Half-open bounds in the stored JPEG's raster (no EXIF orientation transform).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PixelBounds {
+    pub left: u32,
+    pub top: u32,
+    pub right: u32,
+    pub bottom: u32,
+}
 
 /// Representation of a detected visual UI element with normalized bounding box.
 #[derive(Debug, Clone, PartialEq)]
@@ -19,16 +43,19 @@ pub struct UiBoundingBox {
 
 impl UiBoundingBox {
     pub fn centroid(&self) -> (f32, f32) {
-        ((self.x_min + self.x_max) / 2.0, (self.y_min + self.y_max) / 2.0)
+        (
+            (self.x_min + self.x_max) / 2.0,
+            (self.y_min + self.y_max) / 2.0,
+        )
     }
 }
 
 /// A temporal video frame in the visual ring buffer.
 #[derive(Debug, Clone)]
-pub struct VideoKeyframe {
+pub struct VideoKeyframe<Jpeg = Vec<u8>> {
     pub sequence_number: u64,
     pub timestamp_ms: u64,
-    pub jpeg_bytes: Vec<u8>,
+    pub jpeg_bytes: Jpeg,
     pub width: u32,
     pub height: u32,
     pub is_scene_transition: bool,
@@ -56,4 +83,3 @@ mod tests {
         assert!((cy - 0.3).abs() < 1e-5);
     }
 }
-

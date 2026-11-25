@@ -5,14 +5,58 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+default = ["native"]
+# Headless model workers do not need microphone, playback or echo-canceller libraries.
+onnx-speech = ["dep:kaldi-native-fbank", "dep:ort", "eon-primitives/onnx-runtime"]
+# Local, preinstalled Sherpa SDK; does not enable ort-sys or fetch binaries.
+sherpa-onnx = ["dep:cc", "dep:sha2", "dep:serde_json"]
+native = ["onnx-speech", "dep:cpal", "dep:serde_json", "dep:sha2", "dep:webrtc-audio-processing", "dep:webrtc-audio-processing-config"]
+
 [dependencies]
-cpal = "0.18"
+cpal = { version = "0.18", optional = true }
 eon-primitives = { path = "../eon-primitives" }
-kaldi-native-fbank = "0.1"
-ort = { version = "=2.0.0-rc.15", features = ["download-binaries"] }
+kaldi-native-fbank = { version = "0.1", optional = true }
+ort = { workspace = true, features = ["download-binaries"], optional = true }
 rtrb = "0.3"
 rubato = "5.1"
-serde_json = "1"
-webrtc-audio-processing = { version = "2.1", features = ["bundled"] }
-webrtc-audio-processing-config = "2.1"
+serde_json = { version = "1", optional = true }
+sha2 = { version = "0.10", optional = true }
+webrtc-audio-processing = { version = "2.1", features = ["bundled"], optional = true }
+webrtc-audio-processing-config = { version = "2.1", optional = true }
 
+[build-dependencies]
+cc = { version = "1", optional = true }
+sha2 = { version = "0.10", optional = true }
+
+[[bin]]
+name = "eon-rig-turn"
+required-features = ["native"]
+
+[[test]]
+name = "sherpa_e2e"
+required-features = ["sherpa-onnx"]
+
+[[test]]
+name = "aec_alignment"
+required-features = ["native"]
+
+[[test]]
+name = "asr_e2e"
+required-features = ["onnx-speech"]
+
+[[test]]
+name = "device_loop"
+required-features = ["native"]
+
+[[test]]
+name = "speaker_e2e"
+required-features = ["native"]
+
+[[test]]
+name = "tts_e2e"
+required-features = ["native"]
+
+[[test]]
+name = "vad_e2e"
+required-features = ["onnx-speech"]

@@ -165,7 +165,9 @@ fn align_to(value: u32, alignment: u32) -> u32 {
 /// Renders `layout` headlessly and returns the RGBA8 pixels.
 pub fn render(layout: &Layout, style: &Style) -> Result<Image, RenderError> {
     let (width, height) = image_size(layout);
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+    descriptor.backends = descriptor.backends.with_env();
+    let instance = wgpu::Instance::new(descriptor);
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
         .map_err(|e| RenderError::NoAdapter(e.to_string()))?;
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))

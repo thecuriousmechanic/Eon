@@ -27,7 +27,7 @@ EON utilizes an **end-to-end streaming, chunked, duplex audio pipeline** where s
                │ Speech Active
                ▼
 ┌─────────────────────────────────┐
-│ Biometric Speaker ID (WeSpeaker)│ ──► [Score >= 0.78: Authorized Operator Confirmed]
+│ Enrolled speaker check (§2.3)   │ ──► [Match current speech before interrupting playback]
 └──────────────┬──────────────────┘
                │ Authorized Audio Stream
                ▼
@@ -74,13 +74,17 @@ To prevent EON from barging in on her own voice when speaking through open speak
   - `end_speech_silence_duration`: 250ms of continuous silence below 0.35 confidence.
   - Dynamically lowers to 180ms when the user pauses after a complete syntactic sentence structure.
 
-### 2.3 Biometric Speaker Verification (WeSpeaker)
-To prevent accidental wakeups or interruptions from background TV audio, crowd speech, or third parties:
-- **Model**: `wespeaker-voxceleb-resnet34` (quantized INT8 ONNX, ~6.0 MB).
-- **Extraction**: Evaluates a 256-dimensional speaker voiceprint embedding on the first 120ms of detected speech (< 2ms evaluation on CPU).
-- **Cosine Verification**:
-  $$\text{CosineSimilarity}(\vec{e}_{\text{live}}, \vec{e}_{\text{owner}}) \ge 0.78$$
-  If similarity is below threshold, speech is tagged as ambient environmental noise and ignored.
+### 2.3 Enrolled speaker verification
+
+During active playback, the native duplex path compares the **latest 17 consecutive 32 ms voiced frames** with a local enrollment from the same encoder. Only that 544 ms embedding can authorize mute, at the original cosine threshold (0.35 in the recorded acceptance test). Neither VAD nor audio from before this interval can supply an identity match. Shipping WeSpeaker staggers two short-window schedules eight frames apart. An unvoiced frame, an idle playback signal, a missing played reference or an inference error discards accumulated evidence. CAM++ retains its original disjoint-window schedule.
+
+The render callback publishes each reference block before starting the next. On observing a restarted playback run, the worker discards both queues and both resampler histories, including any new-run audio already queued. A partial VAD frame and speaker evidence cannot cross runs. Only a block read within one active run may contribute to that run's mute decision. This establishes a software boundary, not a hardware capture timestamp or drift correction. The first run has no preceding played reference to discard.
+
+`SpeakerEmbedder::load` uses the pinned WeSpeaker ResNet34-LM encoder (256 dimensions). For a new enrollment, `SpeakerEmbedder::load_for` can explicitly select `SpeakerEncoder::CamPlusPlusZhEnAdvancedV1` (192 dimensions). The loader checks the weights before opening the ONNX session. A voiceprint from a different encoder or feature pipeline needs fresh enrollment, not padding or truncation. See [the recorded comparisons](implementation/06_VERIFICATION_BENCHMARKS_AND_PHASED_PLAYBOOK.md#37-recorded-speaker-decisions-in-synthetic-noise-task-106) for results on competing speech and speaker changes.
+
+The worker retains at most 8,704 candidate PCM samples. With a single encoder it computes one embedding per probe: every 256 or 288 ms during sustained voiced playback, versus every 544 ms with disjoint windows. These intervals describe fixture audio, not physical latency.
+
+`SpeakerAgreement::enroll` is an opt-in two-encoder policy, not the default. It builds a separate template for each encoder from up to eight evenly spaced, nonoverlapping 544 ms excerpts of the same authorized enrollment. It skips digital silence and normalizes the sum of unit embeddings; it does not choose the best-scoring excerpt. A primary match triggers the second encoder on **the same candidate samples**, not earlier audio. Both must accept before mute. No measured improvement is claimed.
 
 ### 2.4 Streaming ASR Engine
 - **Engine**: `sherpa-onnx` runtime with pre-packaged **int8 Streaming Zipformer**.
@@ -122,12 +126,11 @@ flowchart LR
     KokoroONNX --> AudioPCM["24kHz 16-bit Mono PCM Samples"]
 ```
 
-1. **Embedded Phonemizer (`misaki` / `espeak-ng`)**:
-   - Converts English orthography into IPA phoneme representations with native stress markers.
-   - Executes in $< 1\text{ms}$ per clause in pure Rust without spawning child processes.
+1. **Native phonemizer (`espeak-ng`)**:
+   - Runs the operator-installed `espeak-ng` on a trusted executable search path, with fixed `-v en-us -q --ipa=3` arguments. Clause text (at most 2,048 bytes) is stdin, never an argument.
+   - Nonblocking stdin/stdout share a two-second elapsed deadline with process exit. More than 16 KiB of stdout fails the clause rather than truncating it; stderr is discarded. Readback and the normal reply renderer can cancel pending pronunciation. On cancellation, timeout or I/O failure, the worker kills the direct child and arranges to reap it without waiting on a pipe. Eight process-wide slots cover both running children and outstanding cleanup; calls fail without queuing if all are occupied. This deadline does not bound Kokoro inference.
 2. **Phoneme Vocabulary Tokenizer (`kokoro_vocab.json`)**:
-   - Maps IPA symbols to Kokoro's exact internal token indices defined in `perception/models/tts/kokoro_vocab.json`.
-   - Replaces missing or unmapped symbols with silence pauses (`_`), preventing tensor shape mismatches or runtime panics.
+   - Maps known IPA symbols using `eon-voice/assets/kokoro_vocab.json`, skipping unmapped symbols as before. Requires 1–509 tokens before the two model boundary tokens.
 
 ### 3.4 The Dual-Channel Verbalizer Rule (Speaking Code Aloud)
 In software engineering, devops, and cyber operations, raw technical text contains file paths (`engine/core-rs/crates/eon-cyber/src/ast/tree_sitter_engine.rs`), 64-character SHA-256 digests (`4722513f56da...`), raw pointers (`0x7fff5fbff8c0`), and Rust generics (`EonResult<Option<Arc<RwLock<Task>>>>`). Reading these character-by-character over audio creates acoustic chaos and listener fatigue.

@@ -13,4 +13,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "eon-android"
-include(":core-bindings")
+include(":core-bindings", ":app")

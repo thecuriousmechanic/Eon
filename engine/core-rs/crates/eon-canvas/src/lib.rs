@@ -1,6 +1,7 @@
 //! Layered (Sugiyama-style) layout for directed acyclic graphs: rank assignment, dummy nodes for edges that span several
 //! ranks, and barycenter crossing reduction (docs/implementation/05, section 5.2).
 
+pub mod cfg;
 pub mod diff;
 pub mod render;
 pub mod view;

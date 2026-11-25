@@ -2,8 +2,11 @@
 //! llama.cpp with greedy decoding.
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use eon_cognition::backend::LocalModel;
+use eon_cognition::persona::SpeechAct;
+use eon_cognition::router::{CognitiveRouter, Route, SpeechRequest, Workload};
 
 fn model_path() -> PathBuf {
     if let Ok(path) = std::env::var("EON_QWEN_MODEL") {
@@ -26,7 +29,6 @@ fn load() -> LocalModel {
 fn generates_text_for_a_factual_prompt() {
     let model = load();
     let text = model.generate_greedy("The capital of France is", 16).unwrap();
-    println!("OUTPUT: {text:?}");
     assert!(!text.trim().is_empty(), "model produced no text");
 }
 
@@ -43,4 +45,59 @@ fn prompt_larger_than_the_context_window_is_refused() {
     let model = load();
     let huge = "word ".repeat(10_000);
     assert!(model.generate_greedy(&huge, 8).is_err());
+}
+
+#[test]
+fn qwen_public_speech_uses_the_ciel_contract() {
+    let model = load();
+    // One output token cannot generate this report: the legacy caller takes the real reflex path.
+    assert_eq!(
+        model.generate_speech(SpeechAct::Report, "router status", 1).unwrap(),
+        "Report: Local tactical backend configured."
+    );
+    let request = "The battery sensor reads 84 percent. Report this reading.";
+    let router = CognitiveRouter {
+        tactical_local: Some(&model),
+        ..Default::default()
+    };
+    let start = Instant::now();
+    let reply = router
+        .plan(
+            SpeechRequest {
+                act: SpeechAct::Report,
+                text: request,
+                max_tokens: 96,
+            },
+            Workload::Interactive,
+        )
+        .unwrap()
+        .execute()
+        .unwrap();
+    let validated = start.elapsed();
+    assert_eq!(reply.route, Route::TacticalLocal);
+    eprintln!(
+        "preloaded local model, one text turn: selection={:?}, backend through EOG={:?}, \
+         request to validated speech={validated:?} (not TTFT or audio latency)",
+        reply.route_elapsed,
+        reply.backend_elapsed.unwrap(),
+    );
+    let speech = reply.speech;
+    assert!(speech.starts_with("Report: "));
+    assert_eq!(speech.matches("Report:").count(), 1);
+    assert!(!speech.contains(['<', '>']));
+    assert!(model.generate_speech(SpeechAct::Report, request, 1).is_err());
+}
+
+#[test]
+fn qwen_notice_generates_its_own_public_body() {
+    let speech = load()
+        .generate_speech(
+            SpeechAct::Notice,
+            "The library is closed. Notify the listener briefly.",
+            48,
+        )
+        .unwrap();
+    let body = speech.strip_prefix("Notice: ").expect("wrong speech act");
+    assert!(body.to_lowercase().contains("closed"));
+    assert!(!body.contains(['<', '>']));
 }

@@ -7,9 +7,9 @@
 
 pub struct NlmsCanceller {
     weights: Vec<f32>,
-    history: Vec<f32>,
+    history: Vec<f32>, // mirrored ring: history[head..head+taps] runs newest to oldest
     head: usize,
-    power: f32,
+    power: f64,
     mu: f32,
 }
 
@@ -20,35 +20,53 @@ impl NlmsCanceller {
     pub fn new(taps: usize, mu: f32) -> Self {
         Self {
             weights: vec![0.0; taps],
-            history: vec![0.0; taps],
+            history: vec![0.0; 2 * taps],
             head: 0,
             power: 0.0,
             mu,
         }
     }
 
+    /// After skipping device PCM, the old delay line cannot predict echo at the new
+    /// position. Keep the learned acoustic path, not its samples.
+    #[cfg(feature = "native")]
+    pub(crate) fn discard_render_history(&mut self) {
+        self.history.fill(0.0);
+        self.power = 0.0;
+    }
+
     /// Adds one playback sample to the reference history.
     pub fn push_render(&mut self, sample: f32) {
-        let taps = self.history.len();
+        let taps = self.weights.len();
+        self.head = if self.head == 0 {
+            taps - 1
+        } else {
+            self.head - 1
+        };
         let oldest = self.history[self.head];
-        self.power = (self.power - oldest * oldest).max(0.0) + sample * sample;
+        // Avoid accumulated f32 roundoff masquerading as render power after a fade.
+        self.power = (self.power - f64::from(oldest).powi(2)).max(0.0) + f64::from(sample).powi(2);
         self.history[self.head] = sample;
-        self.head = (self.head + 1) % taps;
+        self.history[self.head + taps] = sample;
     }
 
     /// Returns the microphone sample minus the predicted echo, and adapts the weights.
     pub fn process(&mut self, mic: f32) -> f32 {
         let taps = self.weights.len();
-        let mut predicted = 0.0f32;
-        for k in 0..taps {
-            let index = (self.head + taps - 1 - k) % taps;
-            predicted += self.weights[k] * self.history[index];
-        }
+        let reference = &self.history[self.head..self.head + taps];
+        let predicted = self
+            .weights
+            .iter()
+            .zip(reference)
+            .fold(0.0, |sum, (w, x)| sum + w * x);
         let residual = mic - predicted;
-        let gain = self.mu * residual / (self.power + POWER_FLOOR);
-        for k in 0..taps {
-            let index = (self.head + taps - 1 - k) % taps;
-            self.weights[k] += gain * self.history[index];
+        // Plain NLMS divides by render power even in a pause. A loud near-end
+        // phoneme over a fading reference can then corrupt the echo path for
+        // seconds. Reduce the step when the unexplained mic energy dominates.
+        let gain = self.mu * residual
+            / (self.power as f32 + taps as f32 * residual * residual + POWER_FLOOR);
+        for (weight, &sample) in self.weights.iter_mut().zip(reference) {
+            *weight += gain * sample;
         }
         residual
     }
@@ -57,6 +75,64 @@ impl NlmsCanceller {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tap_zero_is_newest_even_across_non_power_of_two_wraps() {
+        for taps in [1, 3, 17] {
+            let mut nlms = NlmsCanceller::new(taps, 0.2);
+            let mut samples = vec![0.; taps];
+            let mut weights = vec![0.; taps];
+            let mut power = 0.0f64;
+            for i in 0..100 {
+                let render = ((i * 13 % 23) as f32 - 11.) / 16.;
+                let mic = ((i * 7 % 31) as f32 - 15.) / 16.;
+                let oldest = samples.pop().unwrap();
+                power = (power - f64::from(oldest).powi(2)).max(0.0) + f64::from(render).powi(2);
+                samples.insert(0, render);
+                let residual = mic
+                    - weights
+                        .iter()
+                        .zip(&samples)
+                        .fold(0., |sum, (w, x)| sum + w * x);
+                let gain = 0.2 * residual
+                    / (power as f32 + taps as f32 * residual * residual + POWER_FLOOR);
+                for (w, x) in weights.iter_mut().zip(&samples) {
+                    *w += gain * x;
+                }
+                nlms.push_render(render);
+                assert_eq!(nlms.process(mic).to_bits(), residual.to_bits());
+                assert_eq!(nlms.weights, weights);
+            }
+        }
+    }
+
+    #[test]
+    fn near_end_during_a_render_fade_does_not_corrupt_the_echo_path() {
+        // A broadband path unrelated to any enrolled voice or test recording.
+        // Train it, keep another source talking through a quiet far end, then
+        // measure the *first* block after render resumes, not after retraining.
+        let mut state = 17u32;
+        let render: Vec<_> = (0..8200)
+            .map(|i| {
+                state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+                let amplitude = if (4000..8000).contains(&i) { 0.0003 } else { 0.3 };
+                (state as f32 / u32::MAX as f32 - 0.5) * amplitude
+            })
+            .collect();
+        let mut nlms = NlmsCanceller::new(128, 0.2);
+        let (mut error, mut echo_energy) = (0.0, 0.0);
+        for (i, &sample) in render.iter().enumerate() {
+            nlms.push_render(sample);
+            let echo = if i >= 91 { 0.6 * render[i - 37] - 0.2 * render[i - 91] } else { 0.0 };
+            let near = if (4000..8000).contains(&i) { 0.2 * (0.08 * i as f32).sin() } else { 0.0 };
+            let residual = nlms.process(echo + near);
+            if i >= 8000 {
+                error += residual * residual;
+                echo_energy += echo * echo;
+            }
+        }
+        assert!(error < 0.1 * echo_energy, "lost the echo path during double talk: {error}/{echo_energy}");
+    }
 
     #[test]
     fn echo_is_removed_and_uncorrelated_speech_survives() {

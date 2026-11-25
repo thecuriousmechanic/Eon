@@ -27,7 +27,7 @@ graph TD
         AA["2. Appraisal & Analysis (解析鑑定)<br/>Deep Semantic, AST, UI, Binary & Network Inspection"]
         PP["3. Parallel Processing (並列演算)<br/>Epoch-Based Dynamic DAGs & Saga Compensation"]
         SS["4. Skill Synthesis (能力改変・統合)<br/>Dynamic Capability Composition & Sub-Agent Orchestration"]
-        IPM["5. Information Particle Manipulation (情報粒子操作)<br/>Software Reality Rewriting, Cyber Defense & Offensive Exploitation"]
+        IPM["5. Information Particle Manipulation (情報粒子操作)<br/>Program Analysis, Cyber Defense & Verified Remediation"]
     end
 
     TA --> AA
@@ -238,9 +238,9 @@ quadrantChart
     "Build & Run Tests": [0.30, 0.20]
     "Shadow Decompilation": [0.25, 0.30]
     "Delete Directory": [0.85, 0.30]
-    "Live Production Exploit": [0.95, 0.15]
+    "Production Rollback": [0.95, 0.15]
     "Wipe System Data": [0.98, 0.05]
-    "Exfiltrate Keys": [0.99, 0.01]
+    "Revoke Production Key": [0.99, 0.01]
 ```
 
 ### Speculative Shadow Execution with Attention-Gated NACK

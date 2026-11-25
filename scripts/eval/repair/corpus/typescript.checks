@@ -1,0 +1,23 @@
+// @case collection-index-vs-value
+check(JSON.stringify(headings([{title: "oak"}, {title: "elm"}])) === '["oak","elm"]');
+check(headings([]).length === 0);
+// @case member-spelling
+check(uppercaseTags(["aBc", "xyz"]).join(" ") === "ABC XYZ"); check(uppercaseTags([]).length === 0);
+// @case date-arithmetic
+check(elapsed(new Date(500), new Date(707)) === 207); check(elapsed(new Date(70), new Date(8)) === -62);
+// @case arrow-object-body
+check(JSON.stringify(named([" A ", "b"])) === '[{"label":"A"},{"label":"b"}]'); check(named([]).length === 0);
+// @case set-array-boundary
+check(uniqueCodes(["b","a","b"]).join("-") === "b-a"); check(Array.isArray(uniqueCodes([])));
+// @case empty-promise-resolution
+const beats = [9]; check(await nextBeat(beats) === undefined); await nextBeat(beats); check(beats.join() === "9,1,2");
+// @case redundant-private-modifier
+const m = new Meter(); check(m.add(4) === 4 && m.add(-2) === 2 && new Meter().add(1) === 1);
+// @case implicit-override
+const wide: Spacing = new WideSpacing(); check(wide.units() === 2 && new Spacing().units() === 1);
+// @case fallback-precedence
+check(beforeLimit(9, {}) && !beforeLimit(10, {})); check(!beforeLimit(1, {stop: 0}) && beforeLimit(1, {stop: 2}));
+// @case readonly-type-syntax
+const points = Object.freeze([-7, 4, 1]); check(extrema(points).join() === "-7,4" && extrema([3]).join() === "3,3");
+// @case lost-tuple-arity
+check(aspect(12, 4) === 3 && aspect(3, 6) === 0.5);

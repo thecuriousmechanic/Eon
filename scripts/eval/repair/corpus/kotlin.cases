@@ -1,0 +1,30 @@
+// @case nullable-member-chain
+fun initials(label: String?): Char? = label.firstOrNull()
+// @case primitive-vararg-spread
+fun spreadWidth(vararg edges: Int): Int = (edges.maxOrNull() ?: 0) - (edges.minOrNull() ?: 0)
+fun plotWidth(edges: IntArray): Int = spreadWidth(edges)
+// @case implicit-numeric-widening
+fun scaleTicks(ticks: Long): Long = ticks * 1000
+fun fromSamples(samples: Int): Long = scaleTicks(samples)
+// @case runtime-const-initializer
+const val DIAGONAL = kotlin.math.sqrt(2.0)
+fun diagonal(side: Double): Double = side * DIAGONAL
+// @case uninitialized-supertype
+open class UnitScale { open fun scale(n: Int) = n }
+class DoubleScale : UnitScale { override fun scale(n: Int) = 2 * super.scale(n) }
+// @case indexing-convention
+class Strip(val labels: List<String>) {
+    fun get(i: Int): String = labels[i].trim()
+}
+fun firstLabel(strip: Strip): String = strip[0]
+// @case data-constructor-property
+data class Book(val title: String, edition: Int)
+fun reprint(book: Book): Book = book.copy(edition = book.edition + 1)
+// @case writable-lazy-delegate
+class Weights(private val points: List<Int>) {
+    var sum by lazy { points.sum() }
+}
+// @case boxed-primitive-array
+fun sortedMarks(marks: List<Int>): IntArray = marks.sorted().toTypedArray()
+// @case regex-string-escape
+fun numbers(text: String): List<String> = Regex("\d+").findAll(text).map { it.value }.toList()

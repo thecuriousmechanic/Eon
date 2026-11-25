@@ -1,0 +1,6 @@
+<resources>
+    <bool name="focused_control_supported">false</bool>
+    <string name="inspector_name">EON focused control</string>
+    <string name="inspector_summary">Identify the kind of one accessibility-focused control on request.</string>
+    <string name="inspector_description">Optional. Choose EON as assistant and assign its accessibility shortcut. In EON, allow one inspection, then tap the shortcut within 30 seconds. Only the kind of the focused control is shown. No text, passwords, screen images, or microphone audio are read. This service cannot click or scroll for you. EON has a separate foreground demo that acts only on its own sample controls after confirmation. Disable this service here at any time.</string>
+</resources>

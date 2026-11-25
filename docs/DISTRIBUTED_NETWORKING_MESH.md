@@ -111,6 +111,31 @@ If the desktop workstation is powered off or network connection is severed:
 2. The phone seamlessly degrades to local on-device quantized models (`gemma-2-2b-it` or `Qwen2.5-Coder-3B` + `Kokoro-82M`) without throwing user-facing exceptions.
 3. Pending background tasks are queued locally until mesh connectivity is re-established.
 
+### 5.1 Implemented: token-only spoken dictation readback
+
+The `eon-mesh` feature `token-readback` implements a narrower service than the sequence above. The edge recognizes one supplied recording (16 kHz mono PCM16, at most eight seconds). As the pinned Zipformer joiner selects nonblank **text token IDs**, it sends new IDs over a dedicated QUIC stream. The workstation detokenizes each prefix and returns a caption. After end-of-utterance it also returns Kokoro pronunciation IDs for “I heard …”. Neither side sends PCM, model weights, an action plan or a lease. Text token IDs reveal the spoken words; they are not anonymized or acoustic tokens.
+
+- **Opt-in:** The host uses `split_inference::zipformer::readback::Readback::LocalOnly` unless the operator authorizes that recording with `AllowTokenPeer { pcm, edge, worker }`. A `TokenPeer` binds an explicit address and an out-of-band public-key pin. The worker must separately call `serve_one` with its pinned `Vocabulary`. There is no discovery, relay, implicit service start or downgrade to the older PCM ALPN.
+- **Verification and fallback:** Every reply binds to a fresh utterance nonce and the ordered request prefix. The edge compares caption bytes with its own decoder and the final pronunciation with independently generated Kokoro IDs. On disconnect, timeout (500 ms per exchange), malformed reply, or content mismatch, it continues with the running edge recognizer and local pronunciation. Different phonemizer versions can legitimately select this fallback. Local ASR or TTS installation failures are errors, not successes.
+- **Playback:** `Readback::queue` requires the caller's reply-scoped `ReplyRenderer`. Partial captions can update a display only. Successful finalization queues one attributed readback; silence queues nothing. The caller pumps Kokoro on its synthesis worker, and only a matching trusted kernel lease permits samples onto the bounded render ring. Interrupt via the same renderer’s revocation handle. The service never opens a microphone or speaker.
+- **Interruption:** Revocation wakes a pending dial, stream operation or local model-step wait; a model step also has an eight-second deadline. Each individual edge QUIC write poll and final FIN is serialized with revocation, not the whole frame or an async wait. A poll already in progress may accept a prefix before revocation takes effect. Those bytes cannot be recalled and may arrive later, but no remaining fragment is submitted after revocation. The render callback does not take this lock.
+
+To reproduce the private loopback gate with the repository's native voice prerequisites (ORT, espeak-ng, etc.), from the repository root:
+
+```bash
+python3 scripts/download_models.py --ids voice-test-zipformer-0 \
+  zipformer-en-2023-06-26-{encoder-int8,decoder,joiner-int8,tokens} \
+  kokoro-v1.0-release-int8 kokoro-v1.0-voice-af_heart
+cd engine/core-rs
+cargo test --locked -p eon-mesh --features token-readback --test split_token_readback -- --test-threads=1
+```
+
+The test uses the release recording/transcript and a second wire implementation that can partition or corrupt a reply. It checks the PCM consumed by the edge render callback using independent ASR. The default tests open no audio devices.
+
+On Linux, `split_inference_tests_final_reaches_private_cpal_output` is an additional ignored, output-only gate. Use **only** a dedicated Pulse server with the single `eon_vad` null sink: set `PULSE_SERVER` to its private `unix:/…` socket, `PULSE_SINK=eon_vad`, `PULSE_SOURCE=eon_vad.monitor`, and `ALSA_CONFIG_PATH` to a file containing only `pcm.!default { type pulse server "<PULSE_SERVER>" }` plus newline (substitute the socket address). Set `EON_VOICE_TEST_PRIVATE_OUTPUT=1`, `EON_VOICE_TEST_VIRTUAL_MONITOR=1`, and `PULSE_LATENCY_MSEC=100`, then select the test with `-- --ignored`. It checks actual CPAL callback frame counts, driver errors, and ASR on the post-render reference. It does not open the monitor source, measure acoustic latency, or certify physical mobile hardware. Acoustic inference and waveform synthesis still run at the edge; rechecking the worker’s computation is intentional.
+
+On the release recording, the edge sent 11 nonfinal chunks (38 ASR IDs before the flush). The 24 kHz ring consumed 162,000 samples; the 48 kHz private CPAL callback consumed 324,000 after resampling. The default Pulse buffer produced 14 driver errors. The 100 ms private-buffer run passed the same strict zero-error check; it is not evidence for a smaller output latency.
+
 ---
 
 ## 6. CRDT-Synchronized Cognitive State & Dual-Storage Projection
@@ -119,13 +144,39 @@ EON maintains a unified memory and task state across all devices using **Conflic
 
 ### 6.1 Cognitive State CRDT Primitives
 1. **Working Context Ledger (LWW-Element-Set CRDT)**:
-   - Stores active conversational context, clipboard items, and focused application state.
+   - The paired history records the speaker of an utterance, the fact of a clipboard event, or the focused application. Utterance and clipboard text never enter that history.
    - Updates use Lamport logical timestamps for deterministic merge resolution.
 2. **Semantic Knowledge Graph (Loro Tree & Map CRDT)**:
    - Additions of entity nodes and relationship edges are commutative and associative.
    - Simultaneous fact additions on the phone and desktop merge deterministically without merge conflicts.
 3. **Task & Execution Journal (PNCounter & ORSet CRDT)**:
    - Distributed task tracking. If a background download finishes on the server while the user is using the phone, the task completion event propagates immediately.
+
+The Rust paired service negotiates `eon/mesh/paired/4`. Upgrade both peers together:
+v3 uses incompatible Loro blob pages, and there is no fallback to v2 or to the
+unpaired public document. The first pull pins the responder's target version for
+that exchange; the push then targets the initiator's post-pull version. Later
+edits remain for the next exchange. Each page carries at most 256 contiguous,
+uncompressed protected map operations from one Loro change, with its writer,
+first counter, timestamp, Lamport clock and dependencies. Snapshots and compressed
+Loro blobs are not page formats. The entire framed RPC must fit 1 MiB.
+
+V4 supports a combined frontier of at most 256 writers (and at most 256
+dependencies per change). Exceeding that limit is a frontier error, not an
+oversized-record error. New protected writes are limited to 512 KiB for the UTF-8
+key and encoded value together; rejection leaves the history unchanged. A single
+legacy record too large for a page is reported rather than skipped.
+
+Push acknowledgements return the receiver's **applied** version; only the span
+just sent is credited, even if the ACK also covers other operations. Already
+imported operations are safe to replay. After disconnect or the 1024-RPC limit,
+restart from the two actual version vectors; no saved network cursor is needed.
+
+Ordinary sync does not log peer activity. To show completions in `eon watch`,
+the initiating runtime can opt in to `observed::sync_with_observer` and append
+its fieldless marker to a separate local telemetry journal. Open `/mesh` on
+that journal to see the count and last sequence. These are completed calls, not
+connected peers. A failed journal write is reported separately from the sync.
 
 ### 6.2 Projection into SQLite
 CRDTs serve as the append-only replication log. On each local node, a background projection worker materializes the CRDT state into relational **SQLite (FTS5 + `sqlite-vec`)** tables, enabling sub-5ms hybrid BM25 and vector similarity queries.

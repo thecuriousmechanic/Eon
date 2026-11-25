@@ -1,0 +1,5 @@
+ff1b0650361c7389c32d2d0bdec96bd424e60151d6ef4b3fb7407932d9cee639  /apex/com.android.tethering/javalib/framework-connectivity-t.jar
+8b3c8273f3ee72fec006e1a6c1bc84336930a47cc282dd1fe281f98fa535283f  /apex/com.android.tethering/javalib/service-connectivity.jar
+df2b749ad530f970584329fafdcf52efb226f61d080d078e74438cd7876c3486  /apex/com.android.tethering/lib64/libservice-connectivity.so
+84639058260d25b8710cd5325cce892676fd39e1a35f6348c1f9dde5817b8c3a  /apex/com.android.tethering/lib64/libnetworkstats.so
+1297166d919664258f1c99bdda326a796c00eb5b2b727417594239eea0f84696  /apex/com.android.tethering/etc/bpf/netd_shared/netd.o

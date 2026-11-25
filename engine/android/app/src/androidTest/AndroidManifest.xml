@@ -1,0 +1,40 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.eon.assistant.keystoretest">
+    <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35" />
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <application android:allowBackup="false" android:testOnly="true">
+        <activity android:name="com.eon.assistant.FloatingHudTouchFixture" android:exported="true" />
+        <activity android:name="com.eon.assistant.ProjectionReplacementFixture" android:exported="true"
+            android:excludeFromRecents="true" />
+        <service android:name="com.eon.assistant.ProjectionReplacementFixture$Holder" android:exported="false"
+            android:foregroundServiceType="mediaProjection" android:stopWithTask="true" />
+    </application>
+    <instrumentation android:name="com.eon.assistant.FloatingHudAcceptance"
+        android:targetPackage="com.eon.assistant" />
+    <instrumentation android:name="com.eon.assistant.ControlsAssistAcceptance"
+        android:targetPackage="com.eon.assistant.keystoretest" />
+    <instrumentation android:name="com.eon.assistant.ProfileActionAcceptance"
+        android:targetPackage="com.eon.assistant.keystoretest" />
+    <instrumentation android:name="com.eon.assistant.WorkflowNoticeAcceptance"
+        android:targetPackage="com.eon.assistant.keystoretest" />
+    <instrumentation android:name="com.eon.assistant.SessionMicAcceptance"
+        android:targetPackage="com.eon.assistant.keystoretest" />
+    <instrumentation android:name="com.eon.assistant.OperatorWindowAcceptance"
+        android:targetPackage="com.eon.assistant.keystoretest" />
+    <instrumentation android:name="com.eon.assistant.AssistantActivityAcceptance"
+        android:targetPackage="com.eon.assistant" />
+    <instrumentation android:name="com.eon.assistant.ProjectionGrantAcceptance"
+        android:targetPackage="com.eon.assistant.keystoretest" />
+    <instrumentation android:name="com.eon.assistant.SelfCpuAcceptance"
+        android:targetPackage="com.eon.assistant" />
+    <instrumentation android:name="com.eon.assistant.KeystoreAcceptance"
+        android:targetPackage="com.eon.assistant" />
+    <instrumentation android:name="com.eon.assistant.NativeVaultAcceptance"
+        android:targetPackage="com.eon.assistant" />
+    <instrumentation android:name="com.eon.assistant.DemoActionAcceptance"
+        android:targetPackage="com.eon.assistant" />
+    <instrumentation android:name="com.eon.assistant.VoiceHudAcceptance"
+        android:targetPackage="com.eon.assistant" />
+</manifest>

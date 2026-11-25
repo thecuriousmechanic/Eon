@@ -3,6 +3,8 @@
 > **Crates:** `eon-cyber` (`eon-cyber`, `eon-cyber-common`, `eon-cyber-ebpf`) and `eon-capability` (sandboxes)  
 > **Companion Specs:** `CYBER_AND_PROGRAMMING_MASTERY.md`, `CAPABILITY_FABRIC_SPECIFICATION.md`, `ADR-0004-INFORMATION-PARTICLE-CYBER-MASTERY.md`
 
+> **Scope update:** Follow the [defensive roadmap](../ROADMAP_AND_IMPLEMENTATION_PLAN.md#phase-7-program-analysis-and-defensive-security) and Manual 06's verification gates. The historical CRS proposals in this document are not instructions to generate exploits or execute targets.
+
 ---
 
 ## 1. Governance Boundary and Operational Scope
@@ -197,6 +199,17 @@ Implementing eBPF in Rust requires obeying hard Linux kernel verifier laws:
    - Stripped Android `/apex/com.android.conscrypt/lib64/libssl.so` or statically linked BoringSSL binaries often omit symbol names for internal functions: resolve exported JNI entrypoints (`NativeCrypto_SSL_read` / `NativeCrypto_SSL_write` in `libjavacrypto.so`) first, and fall back to a read-only AArch64/x86_64 function prologue signature table keyed by ELF `.note.gnu.build-id`!
 
 ### 4.2 Tier B (Windows ETW) and Tier C (Unrooted Android `smoltcp` + JA4)
+
+The implemented Windows source-review marker is opt-in per invocation:
+`eon-audit rust --etw < input.rs` (or `python`). It submits event 1, version 1,
+keyword 1, informational level, to provider `{87a9f157-e3c2-4589-93a0-299a3d325e72}`.
+The event has no payload: no path, source, findings or command line. ETW supplies
+the process/thread IDs and timestamp. Normal reviews do not register the provider.
+`submitted` is not proof of collection; the Windows acceptance test stops a trace
+and reads the ETL to distinguish a real event from a successful no-op. Missing
+listeners and unsupported systems yield an explicit telemetry gap without changing
+the source report. The CLI does not start a system trace or subscribe to any OS
+provider. The wider provider designs below are not verified implementations.
 
 - **Tier B (`windows_etw.rs`)**: Subscribe to `Microsoft-Windows-Kernel-Process` (`{22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716}`), `Microsoft-Windows-Kernel-Network`, and DNS-Client ETW providers on a background OS thread, normalizing events into the exact same `TelemetryEvent` enum emitted by Tier A.
 - **Tier C (`userspace_net.rs`)**: On unrooted Android (via `VpnService` `/dev/tun` FD) or unprivileged desktop sandboxes:

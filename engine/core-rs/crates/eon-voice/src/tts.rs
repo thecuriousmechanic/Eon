@@ -6,18 +6,20 @@
 //!
 //! espeak-ng reads the text from stdin and is never given it as an argument, so text cannot inject options.
 
+mod phonemizer;
+
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
 
 use eon_primitives::{EonError, EonResult};
 use ort::session::Session;
 use ort::value::Tensor;
 
 pub const SAMPLE_RATE_HZ: u32 = 24_000;
-/// Longest phoneme sequence the model accepts. The reference truncates to this before tokenizing.
+/// Refuse excess text rather than silently speaking a truncated claim.
 const MAX_TOKENS: usize = 509;
+pub(crate) const MAX_CLAUSE_BYTES: usize = 2048;
+const MAX_CLAUSE_SAMPLES: usize = SAMPLE_RATE_HZ as usize * 60;
 const STYLE_DIM: usize = 256;
 const VOICE_ROWS: usize = 510;
 const SPEED_RANGE: std::ops::RangeInclusive<f32> = 0.5..=2.0;
@@ -43,7 +45,9 @@ fn load_vocab() -> EonResult<HashMap<char, i64>> {
             let (Some(c), None) = (chars.next(), chars.next()) else {
                 return Err(tts_err("vocab", format!("entry {symbol:?} is not one character")));
             };
-            let id = id.as_i64().ok_or_else(|| tts_err("vocab", format!("id for {symbol:?} is not an integer")))?;
+            let id = id
+                .as_i64()
+                .ok_or_else(|| tts_err("vocab", format!("id for {symbol:?} is not an integer")))?;
             Ok((c, id))
         })
         .collect()
@@ -51,49 +55,108 @@ fn load_vocab() -> EonResult<HashMap<char, i64>> {
 
 /// Converts text to en-us IPA phonemes with stress marks. Newlines become spaces and runs of spaces collapse.
 pub fn phonemize(text: &str) -> EonResult<String> {
-    let mut child = Command::new("espeak-ng")
-        .args(["-v", "en-us", "-q", "--ipa=3"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| tts_err("phonemize.spawn", format!("espeak-ng is required on PATH: {e}")))?;
-    child
-        .stdin
-        .take()
-        .ok_or_else(|| tts_err("phonemize.stdin", "no stdin pipe"))?
-        .write_all(text.as_bytes())
-        .map_err(|e| tts_err("phonemize.write", e))?;
-    let output = child.wait_with_output().map_err(|e| tts_err("phonemize.wait", e))?;
-    if !output.status.success() {
-        return Err(tts_err(
-            "phonemize",
-            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-        ));
-    }
-    let raw = String::from_utf8_lossy(&output.stdout);
-    Ok(raw.split_whitespace().collect::<Vec<_>>().join(" "))
+    phonemizer::run(text, || false)
 }
 
 pub struct KokoroTts {
     session: Session,
-    vocab: HashMap<char, i64>,
+    ports: (&'static str, &'static str),
+    frontend: KokoroFrontend,
     voice: Vec<f32>,
 }
 
+/// Pronunciation only. Does not load the waveform model or open an audio device.
+pub struct KokoroFrontend {
+    vocab: HashMap<char, i64>,
+}
+
+/// One local pronunciation, or a peer's byte-identical verified pronunciation.
+/// There is deliberately no constructor accepting unchecked network token IDs.
+pub struct PreparedClause {
+    text: String,
+    ids: Vec<u8>,
+}
+
+impl PreparedClause {
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn ids(&self) -> &[u8] {
+        &self.ids
+    }
+
+    /// Reject mismatches without losing the checked local fallback.
+    pub fn accept_verified_ids(&mut self, received: Vec<u8>) -> bool {
+        if self.ids != received {
+            return false;
+        }
+        self.ids = received;
+        true
+    }
+}
+
+impl KokoroFrontend {
+    pub fn load() -> EonResult<Self> {
+        Ok(Self { vocab: load_vocab()? })
+    }
+
+    pub fn prepare(&self, text: &str) -> EonResult<PreparedClause> {
+        self.prepare_cancellable(text, || false)
+    }
+
+    /// Like `prepare`, but stops the phonemizer when the caller revokes this clause.
+    /// `cancelled` must be a cheap, nonblocking check.
+    pub fn prepare_cancellable(&self, text: &str, cancelled: impl Fn() -> bool) -> EonResult<PreparedClause> {
+        let ids = phonemizer::run(text, cancelled)?
+            .chars()
+            .filter_map(|c| self.vocab.get(&c))
+            .take(MAX_TOKENS + 1)
+            .map(|&id| u8::try_from(id).map_err(|_| tts_err("vocab", "invalid phoneme ID")))
+            .collect::<EonResult<Vec<_>>>()?;
+        if ids.is_empty() || ids.len() > MAX_TOKENS {
+            return Err(EonError::ValidationError(
+                "expected 1..=509 Kokoro phoneme tokens".into(),
+            ));
+        }
+        Ok(PreparedClause {
+            text: text.to_owned(),
+            ids,
+        })
+    }
+}
+
 impl KokoroTts {
-    /// Loads the model and a voice file. Both must be the digest-verified artifacts from `scripts/models.lock.json`.
+    /// Loads a caller-verified Kokoro v1 graph and raw style bank. The default artifacts are pinned in
+    /// `scripts/models.lock.json`; the separate `thewh1teagle/kokoro-onnx` v1 release uses `tokens` / `audio`.
+    /// There is no implicit model lookup, download or fallback.
     pub fn load(model: impl AsRef<Path>, voice: impl AsRef<Path>) -> EonResult<Self> {
+        // A clause is a single blocking graph run. Respect the host CPU limit and cap
+        // inference parallelism so the audio callback and perception worker can still run.
+        let threads = std::thread::available_parallelism().map_or(1, |n| n.get().min(4));
         let session = Session::builder(crate::runtime::environment()?)
             .map_err(|e| tts_err("builder", e))?
-            .with_intra_threads(2)
+            .with_intra_threads(threads)
             .map_err(|e| tts_err("threads", e))?
             .commit_from_file(model)
             .map_err(|e| tts_err("load", e))?;
+        let ports = [("input_ids", "waveform"), ("tokens", "audio")]
+            .into_iter()
+            .find(|(ids, pcm)| {
+                session.inputs().len() == 3
+                    && [*ids, "style", "speed"]
+                        .iter()
+                        .all(|n| session.inputs().iter().any(|i| i.name() == *n))
+                    && session.outputs().iter().any(|o| o.name() == *pcm)
+            })
+            .ok_or_else(|| tts_err("load", "unsupported Kokoro input/output names"))?;
         let bytes = std::fs::read(voice).map_err(|e| tts_err("voice", e))?;
         let expected = VOICE_ROWS * STYLE_DIM * 4;
         if bytes.len() != expected {
-            return Err(tts_err("voice", format!("expected {expected} bytes, found {}", bytes.len())));
+            return Err(tts_err(
+                "voice",
+                format!("expected {expected} bytes, found {}", bytes.len()),
+            ));
         }
         let voice = bytes
             .as_chunks::<4>()
@@ -103,7 +166,8 @@ impl KokoroTts {
             .collect();
         Ok(Self {
             session,
-            vocab: load_vocab()?,
+            ports,
+            frontend: KokoroFrontend::load()?,
             voice,
         })
     }
@@ -118,41 +182,50 @@ impl KokoroTts {
         mut on_clause: impl FnMut(&[f32]),
     ) -> EonResult<StreamTiming> {
         let started = std::time::Instant::now();
-        let clauses = split_clauses(text);
-        if clauses.is_empty() {
-            return Err(EonError::ValidationError("text has no speakable clauses".into()));
-        }
+        let mut count = 0;
         let mut first_audio = None;
-        for clause in &clauses {
+        for clause in clauses(text) {
             let samples = self.synthesize(clause, speed)?;
             first_audio.get_or_insert_with(|| started.elapsed());
             on_clause(&samples);
+            count += 1;
         }
         Ok(StreamTiming {
-            clauses: clauses.len(),
-            first_audio: first_audio.unwrap_or_default(),
+            clauses: count,
+            first_audio: first_audio
+                .ok_or_else(|| EonError::ValidationError("text has no speakable clauses".into()))?,
             total: started.elapsed(),
         })
     }
 
     pub fn synthesize(&mut self, text: &str, speed: f32) -> EonResult<Vec<f32>> {
+        self.synthesize_cancellable(text, speed, || false)
+    }
+
+    pub(crate) fn synthesize_cancellable(
+        &mut self,
+        text: &str,
+        speed: f32,
+        cancelled: impl Fn() -> bool,
+    ) -> EonResult<Vec<f32>> {
         if !SPEED_RANGE.contains(&speed) {
-            return Err(EonError::ValidationError(format!("speed {speed} is outside 0.5 to 2.0")));
+            return Err(EonError::ValidationError(format!(
+                "speed {speed} is outside 0.5 to 2.0"
+            )));
         }
-        let phonemes = phonemize(text)?;
-        let tokens: Vec<i64> = phonemes
-            .chars()
-            .filter_map(|c| self.vocab.get(&c).copied())
-            .take(MAX_TOKENS)
-            .collect();
-        if tokens.is_empty() {
-            return Err(EonError::ValidationError("text has no speakable phonemes".into()));
+        let clause = self.frontend.prepare_cancellable(text, cancelled)?;
+        self.synthesize_prepared(&clause, speed)
+    }
+
+    pub(crate) fn synthesize_prepared(&mut self, clause: &PreparedClause, speed: f32) -> EonResult<Vec<f32>> {
+        if !SPEED_RANGE.contains(&speed) {
+            return Err(EonError::ValidationError("invalid Kokoro playback speed".into()));
         }
-        let row = tokens.len();
+        let row = clause.ids.len();
         let style = self.voice[row * STYLE_DIM..(row + 1) * STYLE_DIM].to_vec();
-        let mut ids = Vec::with_capacity(tokens.len() + 2);
+        let mut ids = Vec::with_capacity(row + 2);
         ids.push(0);
-        ids.extend(tokens);
+        ids.extend(clause.ids.iter().map(|&id| i64::from(id)));
         ids.push(0);
 
         let input_ids = Tensor::from_array(([1usize, ids.len()], ids)).map_err(|e| tts_err("input", e))?;
@@ -160,11 +233,14 @@ impl KokoroTts {
         let speed = Tensor::from_array(([1usize], vec![speed])).map_err(|e| tts_err("input", e))?;
         let outputs = self
             .session
-            .run(ort::inputs!["input_ids" => input_ids, "style" => style, "speed" => speed])
+            .run(ort::inputs![self.ports.0 => input_ids, "style" => style, "speed" => speed])
             .map_err(|e| tts_err("run", e))?;
-        let (_, waveform) = outputs["waveform"]
+        let (_, waveform) = outputs[self.ports.1]
             .try_extract_tensor::<f32>()
             .map_err(|e| tts_err("waveform", e))?;
+        if waveform.is_empty() || waveform.len() > MAX_CLAUSE_SAMPLES || !waveform.iter().all(|s| s.is_finite()) {
+            return Err(tts_err("waveform", "expected 0 < duration <= 60s of finite mono PCM"));
+        }
         Ok(waveform.to_vec())
     }
 }
@@ -172,23 +248,13 @@ impl KokoroTts {
 /// Splits text into clauses after sentence and clause punctuation. Each clause keeps its punctuation. Empty pieces are
 /// dropped, so every returned clause has at least one speakable character.
 pub fn split_clauses(text: &str) -> Vec<String> {
-    let mut clauses = Vec::new();
-    let mut current = String::new();
-    for c in text.chars() {
-        current.push(c);
-        if matches!(c, '.' | '!' | '?' | ';' | ':' | ',') {
-            let trimmed = current.trim();
-            if trimmed.chars().any(char::is_alphanumeric) {
-                clauses.push(trimmed.to_owned());
-            }
-            current.clear();
-        }
-    }
-    let rest = current.trim();
-    if rest.chars().any(char::is_alphanumeric) {
-        clauses.push(rest.to_owned());
-    }
-    clauses
+    clauses(text).map(str::to_owned).collect()
+}
+
+pub(crate) fn clauses(text: &str) -> impl Iterator<Item = &str> {
+    text.split_inclusive(['.', '!', '?', ';', ':', ','])
+        .map(str::trim)
+        .filter(|s| s.chars().any(char::is_alphanumeric))
 }
 
 /// Timing of one streamed synthesis. `first_audio` is the time until the first clause's samples were delivered.
@@ -207,7 +273,11 @@ mod tests {
     fn clauses_keep_their_punctuation_and_drop_empty_pieces() {
         assert_eq!(
             split_clauses("Affirmative. I am running the test now, and the report follows shortly."),
-            vec!["Affirmative.", "I am running the test now,", "and the report follows shortly."]
+            vec![
+                "Affirmative.",
+                "I am running the test now,",
+                "and the report follows shortly."
+            ]
         );
         assert_eq!(split_clauses("  ... ,  "), Vec::<String>::new());
         assert_eq!(split_clauses("no punctuation here"), vec!["no punctuation here"]);

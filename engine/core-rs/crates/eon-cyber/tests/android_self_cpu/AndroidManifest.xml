@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.eon.test.selfcpu">
+    <uses-sdk android:minSdkVersion="35" android:targetSdkVersion="35" />
+    <application android:allowBackup="false" android:extractNativeLibs="true"
+        android:testOnly="true" />
+    <instrumentation android:name=".StockAppTest" android:targetPackage="org.eon.test.selfcpu" />
+</manifest>

@@ -5,6 +5,17 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
-[dependencies]
-aya = "0.16"
-eon-primitives = { path = "../eon-primitives" }
+[features]
+default = ["legacy-exec"]
+legacy-exec = ["dep:aya", "dep:eon-primitives"]
+self-fsync = ["dep:aya", "dep:libc", "dep:linux-raw-sys"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+aya = { version = "0.16", optional = true }
+eon-primitives = { path = "../eon-primitives", optional = true }
+libc = { version = "0.2", optional = true }
+linux-raw-sys = { version = "0.12", default-features = false, features = ["general", "std"], optional = true }
+
+[[test]]
+name = "exec_probe"
+required-features = ["legacy-exec"]

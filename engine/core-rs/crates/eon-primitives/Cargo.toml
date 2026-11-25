@@ -5,7 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+onnx-runtime = ["dep:ort"]
+
 [dependencies]
+ort = { workspace = true, optional = true }
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive"], optional = true }
 getrandom = "0.3"
-

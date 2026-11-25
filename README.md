@@ -7,11 +7,13 @@
 
 ## 1. Executive Summary & Vision
 
+The architecture below describes the target, not a released feature set. For what runs today, see the [roadmap checkboxes](./docs/ROADMAP_AND_IMPLEMENTATION_PLAN.md) and the [verification commands and limits](./docs/IMPLEMENTATION_BLUEPRINT.md#8-implementation-status-living-section). In particular, a passing host test does not establish phone microphone latency, WAN performance, or device permissions.
+
 **EON** is an autonomous, ultra-low-latency AI Personal Assistant, Cyber Operator, and Cognitive Operating System inspired by **Ciel** (*Manas: Ciel*, formerly *Great Sage* and *Wisdom King Raphael*) from *That Time I Got Reincarnated as a Slime* (*Tensei Shitara Slime Datta Ken*).
 
 Unlike conventional chatbots that wait passively for commands, demand constant hand-holding, or babble pleasantries, EON functions as an **omnipresent, proactive intellectual partner, world-class programmer, cyber operator, and autonomous execution engine**:
 - **Absolute Autonomy**: When given an intent or encountering an event, EON synthesizes a plan, allocates resources, dispatches worker tasks, and executes multi-step actions across systems **without asking unnecessary questions or waiting for trivial approvals**.
-- **Information Particle Manipulation (Code & Cyber Supremacy)**: Treats the digital substrate—source code, ASTs, intermediate representations, native binaries (ELF/PE/DEX), memory buffers, and network packets—as malleable information particles. Elite capability in **extreme polyglot programming**, **defensive cyber hardening**, and **offensive vulnerability research / penetration simulation**.
+- **Program analysis and defensive security**: Analyze authorized source code, check dependency inventories against advisories, isolate untrusted tools, and verify remediation. Autonomous exploitation is outside the project scope.
 - **Engine Optimized for Networking (Distributed Cognitive Mesh)**: Operates not as an isolated device app, but as a peer-to-peer cognitive mesh spanning mobile edge devices (Android), high-compute workstations, and servers via multiplexed P2P QUIC and CRDT-synchronized memory.
 - **Thought Acceleration (< 150ms Cognitive Routing)**: Tiered neural and deterministic inference paths with **Predictive Pre-Cognition** ensure instantaneous reflex actions, sub-200ms voice responses, and continuous background parallel processing.
 - **Parallel Processing & Epoch Leases**: Decomposes objectives into directed acyclic graphs (DAGs) of tasks, executing capabilities concurrently, handling asynchronous human interruptions with saga rollbacks, and combining atomic primitives into compound skills.
@@ -66,9 +68,8 @@ EON unifies the cutting-edge foundations discovered in **CHRONOS** (persistent m
 │  - Extreme Polyglot Programming: Rust, C/C++, Kotlin, Go, TypeScript, ASM    │
 │  - Self-Healing Compiler Loop: AST Parsing, Diagnostic Taint & Auto-Patch   │
 │  - Aegis Cyber Defense: Static/Dynamic Taint, eBPF Anomaly Monitor, Auto-Fix│
-│  - eBPF SSL/TLS Uprobes (Cleartext Payload Audit on SSL_read/SSL_write)     │
-│  - Unprivileged Virtual Network Stack (smoltcp in User Space / Android TUN) │
-│  - Cyber Offense & Research: ELF/DEX Decompilation, Symbolic Exec, Fuzzing  │
+│  - Source-level review and bounded local audit records, not traffic capture │
+│  - Offline dependency advisories, sandbox isolation and verified remediation│
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │ Governed Tasks & Epoch Leases
                                        ▼
@@ -118,7 +119,7 @@ In Tensura, Ciel never wastes time asking Rimuru trivial questions like *"Should
 | **Initiative** | Passive: Waits for explicit, micro-managed commands. | **Autonomous**: Executes intent immediately, planning multi-step actions. |
 | **User Approvals** | Interrupts user constantly with confirmation prompts. | **Self-Governing**: Runs read, analyze, and reversible tasks instantly; uses Speculative Shadow Execution with NACK for underspecified tasks. |
 | **Response Style** | Chatty, verbose, filled with conversational filler. | **Concise & Factual**: *"Report: Analysis complete. 4 vulnerabilities patched."* |
-| **Programming & Cyber**| Suggests generic code snippets with bugs. | **Information Particle Manipulation**: Full AST refactoring, self-healing compiler loops, binary decompilation, and automated cyber defense/offense. |
+| **Programming & Cyber**| Suggests generic code snippets with bugs. | AST refactoring, compiler diagnostics, dependency assessment, and verified defensive fixes. |
 | **Execution** | Single-turn, shallow API calls. | **Multi-Step DAGs**: Orchestrates background workers, retries, and saga rollbacks across devices. |
 | **Networking** | Single-device silo or dumb cloud client. | **Engine Optimized for Networking**: Peer-to-peer QUIC mesh across phone, desktop, and server with CRDT state synchronization. |
 | **Voice Latency** | 1.5s - 3.0s latency between speech end and audio response. | **Sub-200ms**: Streaming duplex speech pipeline with live barge-in and predictive pre-cognition. |
@@ -181,3 +182,27 @@ If you are an LLM, AI Agent, or Developer assigned to build EON:
 4. Follow [docs/ROADMAP_AND_IMPLEMENTATION_PLAN.md](./docs/ROADMAP_AND_IMPLEMENTATION_PLAN.md) sequentially.
 5. Verify every implemented module with automated unit and integration tests.
 6. Commit code systematically with structured messages.
+
+## Local defensive review
+
+From the repository root, review a single Rust or Python source unit without building or running it:
+
+```sh
+cargo run --locked --manifest-path engine/core-rs/Cargo.toml -p eon-cyber \
+  --no-default-features --bin eon-audit -- python < example.py
+```
+
+The JSON report lists the first matching syntax for each supported rule by byte range, not by quoting source. `observed_syntax` is a review lead, not proof of a vulnerability. `unverified` is not a clean bill of health. The command accepts up to 16 KiB of UTF-8 on stdin and never applies patches. Pass `self-io` instead of a language to read only the review process's storage counters on supported systems. It does not inspect other processes or capture traffic.
+
+## Local trading simulations
+
+QuantConnect [LEAN](https://github.com/QuantConnect/Lean) is an optional, pinned Git submodule. The Rust engine does not depend on it. From the repository root, initialize the submodule and run the sample with Python 3 and the .NET 10 SDK:
+
+```sh
+git submodule update --init -- integrations/lean
+python3 "$(git rev-parse --show-toplevel)/scripts/run_lean_backtest.py"
+```
+
+The first build needs NuGet access. The simulation uses LEAN's bundled SPY minute data for October 7 to 11, 2013. It uses a filesystem data feed and simulated transactions, with no brokerage login, live orders, or QuantConnect account. The runner checks LEAN's successful data requests for trade and quote files from all five sessions, and its saved summary for completion, one simulated order, and ending equity of `101691.92`. These are regression expectations for this fixture, not a performance forecast.
+
+Each run prints the path to a fresh results directory under `backtests/`. Use `--algorithm` to select another trusted class from LEAN's C# assembly, `--data` for a local LEAN-format dataset, or `--output` to choose another parent directory. Do not run untrusted strategies: LEAN executes algorithm code locally. Neither historical results nor this runner authorize real trades.

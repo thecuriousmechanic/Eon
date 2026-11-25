@@ -20,6 +20,7 @@ struct Request {
 }
 
 pub struct GroupCommitJournal {
+    directory: std::sync::Arc<crate::owned_dir::OwnedDirectory>,
     tx: Option<SyncSender<Request>>,
     worker: Option<JoinHandle<()>>,
 }
@@ -28,15 +29,21 @@ impl GroupCommitJournal {
     /// Opens the journal in `dir` (repairing a torn tail, as `JournalWriter::open` does) and starts the worker.
     pub fn spawn(dir: impl AsRef<std::path::Path>, queue_depth: usize) -> EonResult<Self> {
         let mut writer = JournalWriter::open(dir)?;
+        let directory = writer.dir.clone();
         let (tx, rx) = mpsc::sync_channel::<Request>(queue_depth.max(1));
         let worker = thread::Builder::new()
             .name("eon-journal".into())
             .spawn(move || run(&mut writer, rx))
             .map_err(|e| EonError::InternalError(format!("cannot start journal worker: {e}")))?;
         Ok(Self {
+            directory,
             tx: Some(tx),
             worker: Some(worker),
         })
+    }
+
+    pub fn directory(&self) -> &crate::owned_dir::OwnedDirectory {
+        &self.directory
     }
 
     /// Enqueues a payload. The receiver yields the assigned sequence number once it is durable.
@@ -57,8 +64,8 @@ impl GroupCommitJournal {
         Ok(ack)
     }
 
-    /// Scrubs secrets and invisible characters from `text`, then journals the result durably.
-    /// Raw secrets never reach the log, so the journal stays safe to replicate and to show in a UI.
+    /// Scrubs recognized secret patterns and invisible characters before journaling free text.
+    /// Do not rely on text heuristics to protect arbitrary credentials.
     pub fn append_scrubbed(&self, text: &str) -> EonResult<u64> {
         self.append_durable(crate::scrubber::scrub(text).into_bytes())
     }
@@ -148,16 +155,41 @@ mod tests {
 
     #[test]
     fn scrubbed_appends_never_persist_the_raw_secret() {
+        use crate::journal::HEADER_LEN;
+        use crate::scrubber::redaction_marker;
+
+        let token_body = "paper-deploy-token";
+        let token = format!("ghp_{token_body}");
+        let segments = ["paperheader", "paperclaims", "papersignature"];
+        let bearer = ["Bearer", &segments.join(".")].join(" ");
+        let key_lines = ["paper-key-line-one", "paper-key-line-two"];
+        let label = "PRIVATE KEY";
+        let key = format!("-----BEGIN {label}-----\r\n{}\r\n-----END {label}-----", key_lines.join("\r\n"));
+        let hex40 = "0123456789abcdef".repeat(2) + "01234567";
+        let hex64 = "FEDCBA9876543210".repeat(4);
+        let digest = "02468ace13579bdf".repeat(4);
+        let hashes = format!("sha256:{digest}\ncommit {}", &digest[..40]);
+        let input = format!("deploy {token}\nauth: {bearer}\nkey: {key}\ntoken={hex40}\n{hex64}\n{hashes}");
+        let expected = format!(
+            "deploy {}\nauth: {}\nkey: {}\ntoken={}\n{}\n{hashes}",
+            redaction_marker(&token), redaction_marker(&bearer), redaction_marker(&key),
+            redaction_marker(&hex40), redaction_marker(&hex64),
+        );
+
         let dir = tempfile::tempdir().unwrap();
         let journal = GroupCommitJournal::spawn(dir.path(), 8).unwrap();
-        journal
-            .append_scrubbed("deploy with ghp_FIXTURE-not-a-real-token now")
-            .unwrap();
+        let seq = journal.append_scrubbed(&input).unwrap();
         drop(journal);
-        let text: Vec<u8> = replay(dir.path()).unwrap().into_iter().flat_map(|f| f.payload).collect();
-        let text = String::from_utf8(text).unwrap();
-        assert!(!text.contains("16C7e42F"), "raw secret reached the journal: {text}");
-        assert!(text.contains("[REDACTED_SECRET:b3_"));
+
+        let disk = std::fs::read(dir.path().join(format!("seg_{seq:020}.eonj"))).unwrap();
+        for raw in [token_body, &hex40, &hex64].into_iter().chain(segments).chain(key_lines) {
+            assert!(!disk.windows(raw.len()).any(|w| w == raw.as_bytes()), "stored fixture: {raw}");
+        }
+        assert_eq!(&disk[HEADER_LEN..], expected.as_bytes());
+        let frames = replay(dir.path()).unwrap();
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].seq_no, seq);
+        assert_eq!(frames[0].payload, expected.as_bytes());
     }
 
     #[test]

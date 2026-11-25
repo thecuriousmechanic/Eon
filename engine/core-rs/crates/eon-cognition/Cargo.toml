@@ -5,9 +5,58 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
-[dependencies]
-eon-capability = { version = "0.1.0", path = "../eon-capability" }
-eon-primitives = { path = "../eon-primitives" }
-llama-cpp-2 = "0.1"
-serde_json = "1"
+[features]
+default = ["local-inference", "sqlite-memory", "objective-compiler"]
+llama-backend = ["dep:llama-cpp-2"]
+router-native-gate = ["llama-backend", "dep:sha2", "dep:serde_json"]
+local-inference = ["llama-backend", "dep:eon-capability", "dep:serde_json"]
+sqlite-memory = ["dep:rusqlite"]
+loro-memory = ["sqlite-memory", "dep:loro", "dep:postcard", "dep:blake3"]
+bge-memory = ["loro-memory", "dep:ort", "dep:sha2", "dep:tokenizers", "eon-primitives/onnx-runtime"]
+objective-compiler = ["dep:eon-kernel", "dep:serde_json", "dep:memmap2", "dep:rustix"]
 
+[dependencies]
+blake3 = { version = "1", optional = true }
+eon-capability = { version = "0.1.0", path = "../eon-capability", optional = true }
+eon-kernel = { path = "../eon-kernel", optional = true }
+eon-primitives = { path = "../eon-primitives" }
+llama-cpp-2 = { version = "0.1", optional = true }
+loro = { version = "1", default-features = false, optional = true }
+ort = { workspace = true, optional = true }
+postcard = { version = "1", default-features = false, optional = true }
+rusqlite = { version = "0.37", features = ["bundled"], optional = true }
+serde_json = { version = "1", optional = true }
+sha2 = { version = "0.10.9", optional = true }
+tokenizers = { version = "=0.23.2", default-features = false, features = ["fancy-regex"], optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+memmap2 = { version = "0.9.12", optional = true }
+rustix = { version = "1.1.6", features = ["fs", "process"], optional = true }
+
+[[test]]
+name = "compiler_tests"
+required-features = ["objective-compiler"]
+
+[[test]]
+name = "grammar_e2e"
+required-features = ["local-inference"]
+
+[[test]]
+name = "kv_cache_e2e"
+required-features = ["llama-backend"]
+
+[[test]]
+name = "llm_e2e"
+required-features = ["llama-backend"]
+
+[[test]]
+name = "melon_e2e"
+required-features = ["local-inference"]
+
+[[test]]
+name = "router_native_gate"
+required-features = ["router-native-gate"]
+
+[[test]]
+name = "warm_up_e2e"
+required-features = ["llama-backend"]

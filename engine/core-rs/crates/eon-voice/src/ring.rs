@@ -2,72 +2,79 @@
 //!
 //! The producer runs in the capture callback and the consumer in the render callback or the ASR thread. Neither side
 //! takes a lock or allocates. Overflow drops the newest samples and counts them, so a stalled consumer never blocks
-//! capture. Flushing for barge-in releases every queued sample in one index update.
+//! capture. A cancelled reply never renders again, even while the callback is reclaiming slots.
 
 use rtrb::{Consumer, Producer, RingBuffer};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub struct PcmProducer {
     inner: Producer<f32>,
-    dropped: u64,
+    dropped: Arc<AtomicU64>,
 }
 
 pub struct PcmConsumer {
     inner: Consumer<f32>,
+    dropped: Arc<AtomicU64>,
 }
 
 /// Creates a ring that holds `capacity` samples.
 pub fn pcm_ring(capacity: usize) -> (PcmProducer, PcmConsumer) {
     let (producer, consumer) = RingBuffer::new(capacity);
+    let dropped = Arc::new(AtomicU64::new(0));
     (
         PcmProducer {
             inner: producer,
-            dropped: 0,
+            dropped: dropped.clone(),
         },
-        PcmConsumer { inner: consumer },
+        PcmConsumer {
+            inner: consumer,
+            dropped,
+        },
     )
 }
 
 impl PcmProducer {
+    /// Worker-side TTS backpressure: offer at most this many samples and retain the unwritten tail.
+    #[cfg(feature = "native")]
+    pub(crate) fn writable(&self) -> usize {
+        self.inner.slots()
+    }
+
     /// Writes as many samples as fit and returns how many were written. The rest are dropped and counted.
     pub fn push_slice(&mut self, samples: &[f32]) -> usize {
-        let mut written = 0;
-        for &sample in samples {
-            if self.inner.push(sample).is_err() {
-                break;
-            }
-            written += 1;
+        let (written, lost) = self.inner.push_partial_slice(samples);
+        if !lost.is_empty() {
+            self.dropped.fetch_add(lost.len() as u64, Ordering::Release);
         }
-        self.dropped += (samples.len() - written) as u64;
-        written
+        written.len()
     }
 
     /// Total samples dropped because the ring was full.
     pub fn dropped(&self) -> u64 {
-        self.dropped
+        self.dropped.load(Ordering::Acquire)
     }
 }
 
 impl PcmConsumer {
     /// Fills `out` from the front of the ring and returns how many samples were read.
     pub fn pop_slice(&mut self, out: &mut [f32]) -> usize {
-        let mut read = 0;
-        for slot in out.iter_mut() {
-            match self.inner.pop() {
-                Ok(sample) => {
-                    *slot = sample;
-                    read += 1;
-                }
-                Err(_) => break,
-            }
-        }
-        read
+        self.inner.pop_partial_slice(out).0.len()
     }
 
-    /// Discards everything queued. Used on barge-in so stale TTS audio never plays. rtrb walks the discarded slots to
-    /// drop them, which is a no-op for `f32` and folds away in optimized builds, so the cost is constant there. Debug
-    /// builds pay per queued sample.
+    /// Dropped source samples mean capture and render are no longer time-aligned.
+    pub fn dropped(&self) -> u64 {
+        self.dropped.load(Ordering::Acquire)
+    }
+
+    /// Discards everything currently queued. Debug builds walk discarded slots;
+    /// the realtime callback uses `discard_at_most` instead.
     pub fn flush(&mut self) -> usize {
-        let available = self.inner.slots();
+        self.discard_at_most(usize::MAX)
+    }
+
+    pub(crate) fn discard_at_most(&mut self, limit: usize) -> usize {
+        let available = self.inner.slots().min(limit);
         if available == 0 {
             return 0;
         }
@@ -82,6 +89,10 @@ impl PcmConsumer {
 
     pub fn available(&self) -> usize {
         self.inner.slots()
+    }
+
+    pub(crate) fn capacity(&self) -> usize {
+        self.inner.buffer().capacity()
     }
 }
 

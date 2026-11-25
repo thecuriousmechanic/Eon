@@ -1,0 +1,12 @@
+<resources>
+    <item type="id" name="profile_action_open" />
+    <item type="id" name="profile_action_status" />
+    <item type="id" name="profile_action_outcome" />
+    <item type="id" name="profile_action_confirm" />
+    <string name="profile_action_open">Review an Android assistant profile check</string>
+    <string name="profile_action_review">Allow the selected EON assistant to discover and run this page’s Check model profile action once? It uses device memory size. No screen contents, microphone or other apps. Back cancels.</string>
+    <string name="profile_action_confirm">Allow one profile check</string>
+    <string name="profile_action_done">This page ran the approved profile check.</string>
+    <string name="profile_action_result">Android direct action completed. Suggested model profile: %1$s</string>
+    <string name="profile_action_unavailable">No authorized Android direct action result.</string>
+</resources>

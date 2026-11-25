@@ -5,11 +5,12 @@
 //! the model. At the end every outstanding lease is released and the queue must drain completely.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::{Duration, Instant};
 
 use eon_kernel::resource::{
     Acquisition, CanonicalResourceKey, Demand, Grant, Requirement, ResourceManager, ResourceRank,
 };
-use eon_primitives::LeaseId;
+use eon_primitives::{EonError, LeaseId};
 use proptest::prelude::*;
 
 const CPU_CAPACITY: u64 = 4;
@@ -45,6 +46,77 @@ fn requirements(cpu: u64, file: usize, write: bool) -> Vec<Requirement> {
             demand: if write { Demand::ExclusiveWrite } else { Demand::SharedRead },
         },
     ]
+}
+
+#[test]
+fn reap_grants_in_order_once_and_stale_releases_cannot_reclaim_the_replacements() {
+    let mut rm = ResourceManager::new();
+    rm.set_capacity(cpu_key(), 4);
+    let start = Instant::now();
+    let at = |seconds| start + Duration::from_secs(seconds);
+    let mut acquire = |priority, seq, cpu, file, write, seconds| {
+        rm.acquire_at(priority, seq, requirements(cpu, file, write), Duration::from_secs(seconds), start).unwrap()
+    };
+    // Both readers' pools and locks must be returned before the head waiter can run.
+    let readers = [1, 2].map(|seq| match acquire(0, seq, 2, 0, false, 10) {
+        Acquisition::Granted(lease) => lease,
+        Acquisition::Queued => panic!("readers should coexist"),
+    });
+    assert_eq!(acquire(9, 3, 3, 0, true, 1), Acquisition::Queued);
+    assert_eq!(acquire(1, 4, 3, 0, true, 3), Acquisition::Queued);
+    assert_eq!(acquire(2, 5, 1, 1, true, 9), Acquisition::Queued);
+    assert!(rm.reap_expired(at(9)).is_empty());
+    assert_eq!(rm.available(&cpu_key()), 0);
+
+    // Even an overdue release before the sweep must not silently consume a grant.
+    assert!(matches!(rm.release_at(&readers[0], at(10)), Err(EonError::ResourceLeaseTimeout { .. })));
+    let grants = rm.reap_expired(at(10));
+    assert_eq!(grants.iter().map(|g| g.seq).collect::<Vec<_>>(), [4, 5]);
+    for old in &readers {
+        assert!(matches!(rm.release_at(old, at(10)), Err(EonError::ResourceLeaseTimeout { .. })));
+    }
+    assert!(rm.reap_expired(at(10)).is_empty());
+    assert!(rm.reap_expired(at(12)).is_empty());
+    assert_eq!(rm.available(&cpu_key()), 0);
+    assert_eq!(rm.waiting_len(), 1);
+
+    // The writer's three seconds started at grant, despite waiting ten seconds in the queue.
+    let last = rm.reap_expired(at(13));
+    assert_eq!(last.iter().map(|g| g.seq).collect::<Vec<_>>(), [3]);
+    assert!(matches!(rm.release_at(&grants[0].lease, at(13)), Err(EonError::ResourceLeaseTimeout { .. })));
+    assert!(rm.release_at(&grants[1].lease, at(13)).unwrap().is_empty());
+    assert_eq!(rm.available(&cpu_key()), 1);
+    assert!(rm.reap_expired(at(14)).is_empty());
+    assert_eq!(rm.available(&cpu_key()), 4);
+    assert_eq!(rm.waiting_len(), 0);
+}
+
+#[test]
+fn release_starts_a_waiters_ttl_only_after_the_last_reader_is_gone() {
+    let mut rm = ResourceManager::new();
+    rm.set_capacity(cpu_key(), 2);
+    let start = Instant::now();
+    let ttl = Duration::from_secs;
+    let mut acquire = |seq, reqs, seconds| rm.acquire_at(0, seq, reqs, ttl(seconds), start).unwrap();
+    assert!(matches!(acquire(1, requirements(1, 0, false), 2), Acquisition::Granted(_)));
+    let Acquisition::Granted(reader) = acquire(2, requirements(1, 0, false), 10) else {
+        panic!("second reader should be granted");
+    };
+    let mut writer = requirements(1, 0, true);
+    writer.push(Requirement { key: file_key(0), demand: Demand::SharedRead });
+    assert_eq!(acquire(3, writer, 2), Acquisition::Queued);
+    assert_eq!(acquire(4, requirements(1, 0, false), 5), Acquisition::Queued);
+
+    // One CPU is now free, but the writer still conflicts and the later reader cannot bypass it.
+    assert!(rm.reap_expired(start + ttl(2)).is_empty());
+    assert_eq!(rm.available(&cpu_key()), 1);
+    let grants = rm.release_at(&reader, start + ttl(9)).unwrap();
+    assert_eq!(grants.iter().map(|g| g.seq).collect::<Vec<_>>(), [3]);
+    assert!(rm.reap_expired(start + ttl(10)).is_empty());
+    let grants = rm.reap_expired(start + ttl(11));
+    assert_eq!(grants.iter().map(|g| g.seq).collect::<Vec<_>>(), [4]);
+    assert!(rm.release_at(&grants[0].lease, start + ttl(11)).unwrap().is_empty());
+    assert_eq!(rm.available(&cpu_key()), 2);
 }
 
 /// What the model knows about each granted lease.

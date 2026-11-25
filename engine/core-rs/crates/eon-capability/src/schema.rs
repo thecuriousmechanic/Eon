@@ -22,29 +22,58 @@ pub fn canonical_json(value: &Value) -> String {
     sort(value).to_string()
 }
 
-const SUPPORTED_KEYS: &[&str] = &[
-    "type",
-    "properties",
-    "required",
-    "enum",
-    "items",
-    "additionalProperties",
-    "description",
-    "title",
-    "$schema",
-];
+/// Validate the whole declaration at admission, including branches that an
+/// individual input may not exercise.
+fn validate_definition(schema: &Value) -> Result<(), String> {
+    let obj = schema.as_object().ok_or("schema must be an object")?;
+    for (key, value) in obj {
+        let valid = match key.as_str() {
+            "type" => matches!(value.as_str(), Some("object" | "array" | "string" | "boolean" | "integer" | "number" | "null")),
+            "enum" => value.as_array().is_some_and(|a| !a.is_empty()),
+            "required" => value.as_array().is_some_and(|a| a.iter().all(Value::is_string)),
+            "additionalProperties" => value.is_boolean(),
+            "properties" => {
+                for child in value.as_object().ok_or("properties must be an object")?.values() {
+                    validate_definition(child)?;
+                }
+                true
+            }
+            "items" => {
+                validate_definition(value)?;
+                true
+            }
+            "description" | "title" | "$schema" => value.is_string(),
+            _ => return Err(format!("unsupported schema keyword '{key}'")),
+        };
+        if !valid {
+            return Err(format!("invalid declaration for schema keyword '{key}'"));
+        }
+    }
+    Ok(())
+}
 
 pub fn validate(schema: &Value, input: &Value) -> Result<(), String> {
+    validate_definition(schema)?;
     check(schema, input, "$")
+}
+
+pub(crate) struct CheckedSchema(Value);
+
+impl CheckedSchema {
+    pub(crate) fn new(schema: Value) -> Result<Self, String> {
+        validate_definition(&schema)?;
+        Ok(Self(schema))
+    }
+
+    pub(crate) fn validate(&self, input: &Value) -> Result<(), String> {
+        check(&self.0, input, "$")
+    }
 }
 
 fn check(schema: &Value, input: &Value, at: &str) -> Result<(), String> {
     let obj = schema
         .as_object()
         .ok_or_else(|| format!("{at}: schema must be an object"))?;
-    if let Some(unknown) = obj.keys().find(|k| !SUPPORTED_KEYS.contains(&k.as_str())) {
-        return Err(format!("{at}: unsupported schema keyword '{unknown}'"));
-    }
     let enum_violation = obj
         .get("enum")
         .and_then(Value::as_array)
@@ -82,9 +111,7 @@ fn check_object(schema: &Map<String, Value>, fields: &Map<String, Value>, at: &s
     }
     let properties = schema.get("properties").and_then(Value::as_object);
     let closed = schema.get("additionalProperties") == Some(&Value::Bool(false));
-    let unexpected = properties
-        .filter(|_| closed)
-        .and_then(|props| fields.keys().find(|k| !props.contains_key(*k)));
+    let unexpected = fields.keys().find(|k| closed && !properties.is_some_and(|props| props.contains_key(*k)));
     if let Some(extra) = unexpected {
         return Err(format!("{at}: unexpected field '{extra}'"));
     }

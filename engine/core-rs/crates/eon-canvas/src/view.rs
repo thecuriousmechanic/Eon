@@ -3,13 +3,19 @@
 
 use eframe::egui;
 use eon_cyber::cpg::FunctionBlock;
+use std::sync::Arc;
 
-use crate::diff::{Decision, Pairing, Review, Status};
-use crate::render::{node_centre, NODE_HEIGHT, NODE_WIDTH};
 use crate::Layout;
+use crate::diff::{Decision, Pairing, Review, Status};
+use crate::render::{NODE_HEIGHT, NODE_WIDTH, node_centre};
+
+#[cfg(target_os = "linux")]
+mod live;
+#[cfg(target_os = "linux")]
+pub use live::{LiveDiffView, run_live_diff};
 
 const NODE_FILL: egui::Color32 = egui::Color32::from_rgb(51, 128, 230);
-const EDGE_STROKE: egui::Color32 = egui::Color32::from_rgb(230, 179, 51);
+pub(crate) const EDGE_STROKE: egui::Color32 = egui::Color32::from_rgb(230, 179, 51);
 const LABEL: egui::Color32 = egui::Color32::WHITE;
 const BLOCK_WIDTH: f32 = 360.0;
 const BLOCK_HEIGHT: f32 = 44.0;
@@ -26,6 +32,11 @@ fn status_fill(status: Status) -> egui::Color32 {
     }
 }
 
+fn block_rect(origin: egui::Pos2, x: f32, row: usize) -> egui::Rect {
+    let top_left = origin + egui::vec2(x, 40.0 + row as f32 * ROW_HEIGHT);
+    egui::Rect::from_min_size(top_left, egui::vec2(BLOCK_WIDTH, BLOCK_HEIGHT))
+}
+
 /// Paints the structural diff: old functions on the left, new on the right, and a ribbon between each matched pair.
 pub fn paint_diff(
     painter: &egui::Painter,
@@ -34,13 +45,9 @@ pub fn paint_diff(
     new: &[FunctionBlock],
     pairings: &[Pairing],
 ) {
-    let block_rect = |x: f32, row: usize| {
-        let top_left = origin + egui::vec2(x, 40.0 + row as f32 * ROW_HEIGHT);
-        egui::Rect::from_min_size(top_left, egui::vec2(BLOCK_WIDTH, BLOCK_HEIGHT))
-    };
     for pairing in pairings {
-        let old_rect = pairing.old.map(|i| block_rect(40.0, i));
-        let new_rect = pairing.new.map(|j| block_rect(NEW_COLUMN_X, j));
+        let old_rect = pairing.old.map(|i| block_rect(origin, 40.0, i));
+        let new_rect = pairing.new.map(|j| block_rect(origin, NEW_COLUMN_X, j));
         if let (Some(from), Some(to)) = (old_rect, new_rect) {
             let start = from.right_center();
             let end = to.left_center();
@@ -105,11 +112,16 @@ pub fn review_controls(
             .map(|j| new[j].name.as_str())
             .or_else(|| pairing.old.map(|i| old[i].name.as_str()))
             .unwrap_or_default();
-        let label_at = origin + egui::vec2(CONTROL_LABEL_X, 40.0 + row as f32 * ROW_HEIGHT + 22.0);
-        ui.painter().text(
-            label_at,
-            egui::Align2::LEFT_CENTER,
-            format!("{name} ({:?})", pairing.status),
+        let rect = block_rect(origin, CONTROL_LABEL_X, row);
+        let label_clip =
+            egui::Rect::from_min_max(rect.min, egui::pos2(origin.x + APPLY_X - 4.0, rect.max.y));
+        let painter = ui
+            .painter()
+            .with_clip_rect(ui.clip_rect().intersect(label_clip));
+        painter.text(
+            rect.left_top(),
+            egui::Align2::LEFT_TOP,
+            name,
             egui::FontId::monospace(12.0),
             LABEL,
         );
@@ -125,7 +137,29 @@ pub fn review_controls(
         {
             review.decide(row, Decision::Nacked);
         }
+        if let Some(decision) = review.decision(row) {
+            painter.text(
+                rect.left_center(),
+                egui::Align2::LEFT_CENTER,
+                format!("{:?}: {decision:?}", pairing.status),
+                egui::FontId::monospace(12.0),
+                LABEL,
+            );
+        }
     }
+}
+
+pub(crate) fn paint_node(painter: &egui::Painter, centre: egui::Pos2, label: &str) -> egui::Rect {
+    let rect = egui::Rect::from_center_size(centre, egui::vec2(NODE_WIDTH, NODE_HEIGHT));
+    painter.rect_filled(rect, 4.0, NODE_FILL);
+    painter.text(
+        centre,
+        egui::Align2::CENTER_CENTER,
+        label,
+        egui::FontId::proportional(14.0),
+        LABEL,
+    );
+    rect
 }
 
 pub fn paint_layout(painter: &egui::Painter, origin: egui::Pos2, layout: &Layout) {
@@ -138,16 +172,7 @@ pub fn paint_layout(painter: &egui::Painter, origin: egui::Pos2, layout: &Layout
         }
     }
     for (index, (&rank, &slot)) in layout.rank.iter().zip(&layout.slot).enumerate() {
-        let centre = node_centre(rank, slot);
-        let rect = egui::Rect::from_center_size(at(centre), egui::vec2(NODE_WIDTH, NODE_HEIGHT));
-        painter.rect_filled(rect, 4.0, NODE_FILL);
-        painter.text(
-            at(centre),
-            egui::Align2::CENTER_CENTER,
-            format!("n{index}"),
-            egui::FontId::proportional(14.0),
-            LABEL,
-        );
+        paint_node(painter, at(node_centre(rank, slot)), &format!("n{index}"));
     }
 }
 
@@ -178,38 +203,97 @@ pub fn run(layout: Layout) -> eframe::Result {
 }
 
 pub struct DiffView {
-    old: Vec<FunctionBlock>,
-    new: Vec<FunctionBlock>,
+    old: Arc<[FunctionBlock]>,
+    new: Arc<[FunctionBlock]>,
     pairings: Vec<Pairing>,
     review: Review,
 }
 
+impl DiffView {
+    pub fn new(old: Vec<FunctionBlock>, new: Vec<FunctionBlock>) -> Self {
+        Self::from_blocks(old.into(), new.into())
+    }
+
+    fn from_blocks(old: Arc<[FunctionBlock]>, new: Arc<[FunctionBlock]>) -> Self {
+        let pairings = crate::diff::match_blocks(&old, &new);
+        let review = Review::new(&pairings);
+        Self {
+            old,
+            new,
+            pairings,
+            review,
+        }
+    }
+
+    pub fn show(&mut self, ui: &mut egui::Ui) {
+        let pending = self.review.pending();
+        ui.label(format!(
+            "Review: {pending} pending | in-memory decisions; no files written"
+        ));
+        if self.pairings.is_empty() {
+            ui.label("No function blocks in either source.");
+            return;
+        }
+        ui.label("Before (left) / after (right). Hover a block to inspect its source.");
+        egui::ScrollArea::both().show(ui, |ui| {
+            let origin = ui.next_widget_position();
+            let rows = self.pairings.len();
+            ui.set_min_size(egui::vec2(
+                NACK_X + CONTROL_WIDTH + 8.0,
+                40.0 + rows as f32 * ROW_HEIGHT,
+            ));
+            paint_diff(ui.painter(), origin, &self.old, &self.new, &self.pairings);
+            for (side, x, blocks) in [
+                ("Before", 40.0, &self.old),
+                ("After", NEW_COLUMN_X, &self.new),
+            ] {
+                for (i, block) in blocks.iter().enumerate() {
+                    let rect = block_rect(origin, x, i);
+                    if ui.is_rect_visible(rect) {
+                        ui.interact(rect, ui.scope_id().with((side, i)), egui::Sense::hover())
+                            .on_hover_ui(|ui| {
+                                ui.label(format!(
+                                    "{side}: {} (line {})",
+                                    block.name, block.start_line
+                                ));
+                                ui.monospace(&block.text);
+                            });
+                    }
+                }
+            }
+            review_controls(
+                ui,
+                origin,
+                &self.old,
+                &self.new,
+                &self.pairings,
+                &mut self.review,
+            );
+        });
+        if self.review.pending() != pending {
+            ui.ctx().request_repaint();
+        }
+    }
+}
+
 impl eframe::App for DiffView {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let origin = ui.max_rect().min;
-        paint_diff(ui.painter(), origin, &self.old, &self.new, &self.pairings);
-        review_controls(ui, origin, &self.old, &self.new, &self.pairings, &mut self.review);
+        self.show(ui);
+    }
+}
+
+fn diff_window_options() -> eframe::NativeOptions {
+    eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size([1160.0, 400.0]),
+        ..Default::default()
     }
 }
 
 /// Opens a window that shows the structural diff of two sources until it is closed.
 pub fn run_diff(old: Vec<FunctionBlock>, new: Vec<FunctionBlock>) -> eframe::Result {
-    let pairings = crate::diff::match_blocks(&old, &new);
-    let review = Review::new(&pairings);
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1160.0, 400.0]),
-        ..Default::default()
-    };
     eframe::run_native(
         "eon-canvas diff",
-        options,
-        Box::new(move |_creation| {
-            Ok(Box::new(DiffView {
-                old,
-                new,
-                pairings,
-                review,
-            }))
-        }),
+        diff_window_options(),
+        Box::new(move |_creation| Ok(Box::new(DiffView::new(old, new)))),
     )
 }

@@ -80,6 +80,8 @@ When faced with architectural or design alternatives during implementation, use 
 
 ## 4. Canonical Tech Stack & Architecture Tiers
 
+Phase 7 of the roadmap defines the current security scope: defensive analysis, containment, audit and verified remediation. Historical references to autonomous exploitation in design documents are not implementation instructions.
+
 EON is structured as a dual-engine platform combining native high-performance Rust execution with native Android platform presence:
 
 ### Tier 1: Native High-Performance Core Engine (Rust 2024 Edition)

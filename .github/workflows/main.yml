@@ -1,0 +1,261 @@
+name: Verification
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: engine/core-rs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: cargo clippy --locked -p eon-foundation --all-targets -- -D warnings
+      - run: |
+          umask 077
+          TMPDIR=/tmp cargo test --locked -p eon-foundation -p eon-primitives -p eon-cli -p eon-daemon --features eon-primitives/serde
+      - name: Verify the native process keyring and key removal
+        shell: bash
+        run: |
+          case_name='credentials::platform::identity_and_credential_tests::linux_process_keyring_round_trip_and_teardown'
+          cargo test --locked -p eon-foundation --lib "$case_name" -- --ignored --exact --color never | tee "$RUNNER_TEMP/keyring-result"
+          grep -Fx "test $case_name ... ok" "$RUNNER_TEMP/keyring-result"
+      - run: python3 -m unittest discover -s "$GITHUB_WORKSPACE/scripts"
+      - run: python3 -m unittest discover -s "$GITHUB_WORKSPACE/scripts/eval"
+
+  kernel-and-advisories:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: engine/core-rs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: cargo test --locked -p eon-cyber --no-default-features
+      - name: Test consent and project scoping for paused debugger commands
+        run: |
+          umask 077
+          node --test "$GITHUB_WORKSPACE"/scripts/eval/paused_locations/*.test.js
+      - run: |
+          umask 077
+          TMPDIR=/tmp cargo test --locked -p eon-kernel
+      - run: cargo test --locked -p eon-vision
+
+  portable-voice-and-cognition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: engine/core-rs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # This exercises the portable paths, not model inference or device drivers.
+      - run: cargo test --locked --no-default-features -p eon-voice -p eon-cognition -p eon-uniffi --features eon-cognition/loro-memory,eon-cognition/objective-compiler
+
+  canvas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      WGPU_BACKEND: vulkan
+      VK_DRIVER_FILES: /opt/google/chrome/vk_swiftshader_icd.json
+    defaults:
+      run:
+        working-directory: engine/core-rs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test the workbench, JPEG scrubber and actual Vulkan pixel readback
+        run: |
+          test -r "$VK_DRIVER_FILES"
+          export XDG_RUNTIME_DIR
+          XDG_RUNTIME_DIR="$(mktemp -d "$RUNNER_TEMP/canvas.XXXXXXXX")"
+          cargo test --locked -p eon-canvas --all-targets
+
+  mesh-loopback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    defaults:
+      run:
+        working-directory: engine/core-rs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          umask 077
+          TMPDIR=/tmp cargo test --locked -p eon-mesh
+      - name: Discover, elect and measure 100 paired RPCs on an isolated two-node LAN
+        run: bash "$GITHUB_WORKSPACE/scripts/test_paired_lan.sh"
+
+  recorded-speech:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    defaults:
+      run:
+        working-directory: engine/core-rs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Extract the pinned x86-64 CPU runtime (no Python packages installed)
+        run: |
+          dir="$(mktemp -d "$RUNNER_TEMP/ort.XXXXXXXX")"
+          python3 -m pip download --only-binary=:all: --no-deps --require-hashes \
+            --implementation cp --abi cp312 --python-version 312 --platform manylinux_2_28_x86_64 \
+            --dest "$dir" -r <(echo 'onnxruntime==1.31.0 --hash=sha256:5e129d6c56abd53e659cb70f00a108d6824086470ff99c2e47a82e5786563db3')
+          unzip -j "$dir"/*.whl 'onnxruntime/capi/libonnxruntime.so.1.31.0' -d "$dir"
+          ln -s libonnxruntime.so.1.31.0 "$dir/libonnxruntime.so.1"
+          ln -s libonnxruntime.so.1 "$dir/libonnxruntime.so"
+          printf 'ORT_LIB_PATH=%s\nORT_PREFER_DYNAMIC_LINK=1\nLD_LIBRARY_PATH=%s\n' "$dir" "$dir" >> "$GITHUB_ENV"
+      - name: Fetch digest-verified models and the two upstream recordings
+        run: |
+          python3 "$GITHUB_WORKSPACE/scripts/download_models.py" --ids \
+            silero-vad-v5 voice-test-sensevoice-en voice-test-zipformer-0 \
+            zipformer-en-2023-06-26-{encoder-int8,decoder,joiner-int8,tokens}
+      - run: cargo test --locked -p eon-voice --no-default-features --features onnx-speech --test asr_e2e --test vad_e2e
+      - run: cargo test --locked -p eon-mesh --features native-zipformer --test split_zipformer
+      - name: Compare native Sherpa and direct ONNX partials on the same recorded speech
+        shell: bash
+        run: |
+          dir="$(mktemp -d "$RUNNER_TEMP/sherpa.XXXXXXXX")"
+          sdk=sherpa-onnx-v1.12.20-linux-x64-shared
+          curl --fail --location --silent --show-error --max-time 180 \
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.20/$sdk.tar.bz2" -o "$dir/sdk.tar.bz2"
+          (cd "$dir" && echo '13a2c502f5ef373f514a5fc5c5ad03cc0798dcb564a6f8cbd54f8f6ce9e47462  sdk.tar.bz2' | sha256sum --check)
+          tar -xjf "$dir/sdk.tar.bz2" -C "$dir" "$sdk/include" "$sdk/lib"
+          export SHERPA_ONNX_DIR="$dir/$sdk"
+          export LD_LIBRARY_PATH="$ORT_LIB_PATH:$SHERPA_ONNX_DIR/lib"
+          cargo test --locked -p eon-voice --no-default-features --features sherpa-onnx,onnx-speech --test sherpa_e2e
+
+  windows-credentials:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: engine/core-rs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check that the default probe tests compile without Linux providers
+        run: cargo test --locked -p eon-ebpf
+      - name: Require both native DPAPI tests to execute
+        shell: bash
+        run: |
+          cargo test --locked -p eon-foundation --lib windows_dpapi -- --color never | tee "$RUNNER_TEMP/dpapi-result.txt"
+          tr -d '\r' < "$RUNNER_TEMP/dpapi-result.txt" > dpapi-result.txt
+          for case_name in windows_dpapi_owner_grants_and_child_stdin windows_dpapi_broker_lifetime_and_invalid_ciphertext; do
+            grep -Fx "test credentials::platform::identity_and_credential_tests::$case_name ... ok" dpapi-result.txt
+          done
+      - name: Read back an opted-in source review from Windows ETW
+        shell: pwsh
+        run: |
+          cargo build --locked -p eon-cyber --no-default-features --bin eon-audit
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./crates/eon-cyber/tests/review_etw.ps1 -AuditExe ./target/debug/eon-audit.exe
+
+  wasm-containment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    defaults:
+      run:
+        working-directory: engine/core-rs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: cargo test --locked -p eon-capability
+
+  android-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: engine/android
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use the runner's JDK 17 for the Android build
+        run: |
+          test -x "${JAVA_HOME_17_X64:?}/bin/java"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+      - name: Test APK export checks and instrumentation harness (host only)
+        run: python3 -m unittest discover -s app
+      - name: Install Android cross-build prerequisites
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;37.0.0" "ndk;27.3.13750724"
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          cargo install cargo-ndk --version 4.1.2 --locked
+      - name: Cross-check capability workers on Android arm64 (API 26)
+        working-directory: engine/core-rs
+        run: |
+          export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/27.3.13750724"
+          bin="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$bin/aarch64-linux-android26-clang"
+          export CXX_aarch64_linux_android="$bin/aarch64-linux-android26-clang++"
+          export AR_aarch64_linux_android="$bin/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC_aarch64_linux_android"
+          cargo clippy --locked --target aarch64-linux-android -p eon-capability --lib --no-deps -- -D warnings
+      - name: Build signed debug APK, compare ABI bindings and run host tests
+        run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.3.13750724" ./gradlew :core-bindings:test :app:test :core-bindings:verifyTargetBindings
+      - name: Verify Keystore restart, denied demo actions and native vault on a disposable Android 35 emulator
+        timeout-minutes: 15
+        run: |
+          image='system-images;android-35;google_apis;x86_64'
+          tools="$ANDROID_HOME/cmdline-tools/latest/bin"
+          adb="$ANDROID_HOME/platform-tools/adb"
+          "$tools/sdkmanager" "emulator" "$image"
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          export ANDROID_AVD_HOME
+          ANDROID_AVD_HOME="$(mktemp -d "$RUNNER_TEMP/eon-avd.XXXXXXXX")"
+          "$tools/avdmanager" create avd --name eon-keystore --package "$image" <<<no
+          serial=emulator-5554
+          "$ANDROID_HOME/emulator/emulator" -avd eon-keystore -port 5554 -accel on \
+            -no-snapshot -no-window -no-audio -no-boot-anim -gpu software &
+          emulator_pid=$!
+          trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
+          timeout 240 "$adb" -s "$serial" wait-for-device
+          # getprop must run on the emulator, not the host.
+          # shellcheck disable=SC2016
+          timeout 180 "$adb" -s "$serial" shell 'until [ "$(getprop sys.boot_completed)" = 1 ]; do sleep 1; done'
+          "$adb" -s "$serial" emu avd name | sed 's/\r$//' | grep -Fx eon-keystore
+          # Keep this fresh AVD awake through the Keystore phases and dismiss its non-secure keyguard.
+          "$adb" -s "$serial" shell svc power stayon true
+          "$adb" -s "$serial" shell input keyevent KEYCODE_WAKEUP
+          "$adb" -s "$serial" shell wm dismiss-keyguard
+          python3 app/keystore_device_test.py --serial "$serial" --demo-denied
+
+  lean-backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: true
+      - name: Run the pinned SPY backtest and verify its result
+        run: python3 "$GITHUB_WORKSPACE/scripts/run_lean_backtest.py" --output "$RUNNER_TEMP/backtests"

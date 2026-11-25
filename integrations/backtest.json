@@ -1,0 +1,22 @@
+{
+  "environment": "backtesting",
+  "live-mode": false,
+  "algorithm-language": "CSharp",
+  "algorithm-location": "QuantConnect.Algorithm.CSharp.dll",
+  "job-queue-handler": "QuantConnect.Queues.JobQueue",
+  "api-handler": "QuantConnect.Api.Api",
+  "messaging-handler": "QuantConnect.Messaging.Messaging",
+  "log-handler": "QuantConnect.Logging.ConsoleLogHandler",
+  "data-provider": "QuantConnect.Lean.Engine.DataFeeds.DefaultDataProvider",
+  "data-monitor-store-succeeded-requests": true,
+  "map-file-provider": "QuantConnect.Data.Auxiliary.LocalDiskMapFileProvider",
+  "factor-file-provider": "QuantConnect.Data.Auxiliary.LocalDiskFactorFileProvider",
+  "object-store": "QuantConnect.Lean.Engine.Storage.LocalObjectStore",
+  "data-aggregator": "QuantConnect.Lean.Engine.DataFeeds.AggregationManager",
+  "setup-handler": "QuantConnect.Lean.Engine.Setup.BacktestingSetupHandler",
+  "result-handler": "QuantConnect.Lean.Engine.Results.BacktestingResultHandler",
+  "data-feed-handler": "QuantConnect.Lean.Engine.DataFeeds.FileSystemDataFeed",
+  "real-time-handler": "QuantConnect.Lean.Engine.RealTime.BacktestingRealTimeHandler",
+  "history-provider": ["QuantConnect.Lean.Engine.HistoricalData.SubscriptionDataReaderHistoryProvider"],
+  "transaction-handler": "QuantConnect.Lean.Engine.TransactionHandlers.BacktestingTransactionHandler"
+}

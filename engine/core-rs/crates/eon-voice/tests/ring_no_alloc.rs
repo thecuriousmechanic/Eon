@@ -6,6 +6,7 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
+use eon_voice::barge_in::BargeIn;
 use eon_voice::ring::pcm_ring;
 
 struct CountingAlloc;
@@ -54,10 +55,11 @@ fn callback_path_does_not_allocate() {
     let (mut tx, mut rx) = pcm_ring(4096);
     let frame = [0.25f32; 160];
     let mut out = [0.0f32; 160];
+    let signal = BargeIn::new();
 
     // Warm up outside the armed window so any one-time setup is excluded.
     tx.push_slice(&frame);
-    rx.pop_slice(&mut out);
+    signal.render(&mut rx, &mut out);
 
     let allocs = allocations_during(|| {
         for _ in 0..10_000 {
@@ -65,9 +67,10 @@ fn callback_path_does_not_allocate() {
             rx.pop_slice(&mut out);
         }
         tx.push_slice(&frame);
-        rx.flush();
+        signal.trigger();
+        assert!(signal.render(&mut rx, &mut out).acknowledged);
         tx.push_slice(&frame);
-        rx.pop_slice(&mut out);
+        assert!(signal.render(&mut rx, &mut out).muted);
     });
     assert_eq!(allocs, 0, "ring callback path allocated {allocs} times");
 }

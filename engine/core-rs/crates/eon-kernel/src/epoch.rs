@@ -54,16 +54,18 @@ impl SharedState {
         Ok(())
     }
 
-    /// Commits like `commit`, but records the writes through `sink` before applying them. Keys and values are scrubbed
-    /// first, so the log and the in-memory state agree and neither holds a raw secret. If recording fails, nothing is
-    /// applied and the epoch stays open.
+    /// Commits scrubbed values through `sink` before applying them. Keys are identifiers: a key
+    /// changed by scrubbing could alias another epoch's key and is rejected, not renamed.
+    /// Validation or recording failure leaves the epoch open and applies nothing.
     pub fn commit_recorded(&mut self, epoch: &mut CognitiveEpoch, sink: &mut dyn EventSink) -> EonResult<()> {
         self.ensure_committable(epoch)?;
-        let writes: BTreeMap<String, String> = epoch
-            .staged
-            .iter()
-            .map(|(key, value)| (scrub(key), scrub(value)))
-            .collect();
+        let mut writes = BTreeMap::new();
+        for (key, value) in &epoch.staged {
+            if scrub(key) != *key {
+                return Err(EonError::ValidationError("epoch key must not require scrubbing".into()));
+            }
+            writes.insert(key.clone(), scrub(value));
+        }
         sink.record(KernelEvent::EpochCommitted {
             id: epoch.id,
             writes: writes.clone(),
@@ -270,6 +272,44 @@ mod tests {
         assert_eq!(state.fence(), 0);
         state.commit(&mut epoch).unwrap();
         assert_eq!(state.get("plan"), Some("draft"));
+    }
+
+    #[test]
+    fn scrubbing_must_not_silently_overwrite_another_staged_key() {
+        let mut state = SharedState::new();
+        let mut epoch = state.begin(1).unwrap();
+        let mut sink = crate::events::VecSink::default();
+        epoch.stage("label", "one").unwrap();
+        epoch.stage("la\u{200b}bel", "two").unwrap();
+        assert!(matches!(
+            state.commit_recorded(&mut epoch, &mut sink),
+            Err(EonError::ValidationError(_))
+        ));
+        assert!(sink.events.is_empty());
+        assert_eq!(state.fence(), 0);
+        assert_eq!(state.get("label"), None);
+        assert!(epoch.stage("still open", "yes").is_ok());
+    }
+
+    #[test]
+    fn a_later_epoch_can_update_a_key_but_cannot_alias_it() {
+        let mut state = SharedState::new();
+        let mut sink = crate::events::VecSink::default();
+        let mut first = state.begin(1).unwrap();
+        first.stage("label", "one").unwrap();
+        state.commit_recorded(&mut first, &mut sink).unwrap();
+
+        let mut alias = state.begin(2).unwrap();
+        alias.stage("la\u{200b}bel", "two").unwrap();
+        assert!(matches!(state.commit_recorded(&mut alias, &mut sink), Err(EonError::ValidationError(_))));
+        assert_eq!(sink.events.len(), 1);
+        assert_eq!(state.fence(), 1);
+        assert_eq!(state.get("label"), Some("one"));
+
+        let mut update = state.begin(2).unwrap();
+        update.stage("label", "three").unwrap();
+        state.commit_recorded(&mut update, &mut sink).unwrap();
+        assert_eq!(SharedState::replay(&sink.events).unwrap().get("label"), Some("three"));
     }
 
     #[test]

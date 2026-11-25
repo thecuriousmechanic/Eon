@@ -1,0 +1,48 @@
+<resources>
+    <bool name="voice_hud_supported">false</bool>
+    <item type="id" name="assistant_role_status" />
+    <item type="id" name="assistant_role_request" />
+    <item type="id" name="assistant_context_review" />
+    <string name="voice_context_review">Review sharing the CPU timing setting</string>
+    <string name="voice_context_confirm_on">Share once: CPU timing is ON. Send only this EON setting to the assistant card? Tap again to confirm. No measurements or screen contents.</string>
+    <string name="voice_context_confirm_off">Share once: CPU timing is OFF. Send only this EON setting to the assistant card? Tap again to confirm. No measurements or screen contents.</string>
+    <string name="voice_context_timed">EON controls shared: CPU timing ON. Check model profile in controls to measure this process. No screen contents collected.</string>
+    <string name="voice_context_untimed">EON controls shared: CPU timing OFF. Check model profile in controls without measuring this process. No screen contents collected.</string>
+    <string name="voice_context_unavailable">Shared setting unavailable. Screen layout and screenshot collection are always off.</string>
+    <string name="voice_role_canceled">Selection canceled. EON is not the selected assistant.</string>
+    <string name="voice_hud_title">EON · Mic off</string>
+    <string name="voice_hud_ready">Session open</string>
+    <string name="voice_hud_checking">Checking model profile…</string>
+    <string name="voice_hud_checked">Profile workflow complete. Completed tasks: %1$d</string>
+    <string name="voice_hud_failed">Profile check unavailable</string>
+    <string name="voice_hud_recommendation">Suggested profile: %1$s</string>
+    <string name="voice_hud_privacy">The mic is optional. Start measures six seconds of local microphone levels. Stop, collapse or dismiss to stop and clear. No audio saved or sent. The built-in tone check does not use the mic.</string>
+    <string name="voice_mic_permission">Request microphone permission</string>
+    <string name="voice_mic_unprepared">Optional microphone meter: request Android microphone permission here. This does not start listening.</string>
+    <string name="voice_mic_pregranted">Mic off. An existing grant alone cannot enable the meter. Deny EON microphone access in Android Settings, then request permission here (before choosing EON as assistant if needed).</string>
+    <string name="voice_mic_prepared">Permission reviewed. Only Start in an unlocked assistant card or in floating HUD controls can turn the mic on.</string>
+    <string name="voice_mic_start">Start 6-second microphone meter</string>
+    <string name="voice_mic_stop">Stop microphone now</string>
+    <string name="voice_mic_title">EON · Mic on</string>
+    <string name="voice_mic_denied">Mic off. Use Open EON controls to review microphone permission, then invoke a fresh card.</string>
+    <string name="voice_mic_progress">Measuring microphone · %1$d/12 half-second levels · RMS %2$d%%</string>
+    <string name="voice_mic_starting">Measuring microphone · waiting for first level</string>
+    <string name="voice_mic_complete">Mic off · 12 levels complete · highest RMS %1$d%%</string>
+    <string name="voice_mic_stopped">Mic off · stopped · levels cleared</string>
+    <string name="voice_mic_failed">Mic off · measurement unavailable · levels cleared</string>
+    <string name="voice_tone_scan">Analyze built-in notification tone</string>
+    <string name="voice_tone_clear">Stop and clear tone levels</string>
+    <string name="voice_tone_progress">Measuring tone · %1$d of up to %2$d levels</string>
+    <string name="voice_tone_complete">Tone complete · %1$d levels · highest RMS %2$d%%</string>
+    <string name="voice_tone_failed">Could not measure a built-in tone. No levels kept.</string>
+    <string name="voice_hud_expand">Show session details</string>
+    <string name="voice_hud_collapse">Hide session details</string>
+    <string name="voice_hud_check">Check model profile</string>
+    <string name="voice_tasks_sample">Check EON’s Android activity tasks</string>
+    <string name="voice_tasks_reading">Checking EON activity tasks…</string>
+    <string name="voice_tasks_counts">Android activity tasks: %1$d running, %2$d retained without running activities. Tap again to refresh.</string>
+    <string name="voice_tasks_unavailable">EON activity task counts unavailable.</string>
+    <string name="open_eon_controls">Open EON controls</string>
+    <string name="close_voice_session">End session</string>
+    <string name="voice_hud_help">Use your assistant gesture while unlocked. Hardware hotwords are unsupported by EON: Android 12 and later do not expose the detector or enrollment check to ordinary apps. EON does not listen for a wake word. Expand the card to check a profile or explicitly start the microphone meter.</string>
+</resources>

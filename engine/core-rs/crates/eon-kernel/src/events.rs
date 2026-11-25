@@ -3,9 +3,9 @@
 
 use std::collections::BTreeMap;
 
-use eon_primitives::{EonResult, TaskId};
+use eon_primitives::{EonResult, TaskId, WorkflowId};
 
-use crate::fsm::TaskState;
+use crate::fsm::{TaskEvent, TaskState, next_state};
 use crate::workflow::{self, Task, Workflow};
 
 fn fsm_state(state: workflow::TaskState) -> TaskState {
@@ -17,6 +17,10 @@ fn fsm_state(state: workflow::TaskState) -> TaskState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KernelEvent {
+    /// Binds task identities and retry policy without persisting capability parameters.
+    WorkflowSubmitted { workflow: WorkflowId, epoch: u64, digest: [u8; 32], tasks: BTreeMap<TaskId, bool> },
+    /// Permanently withdraws the authority of this workflow at this epoch.
+    EpochInvalidated { workflow: WorkflowId, epoch: u64 },
     TaskTransition { task: TaskId, from: TaskState, to: TaskState },
     SubgraphSpliced { parent: TaskId, added: Vec<TaskId> },
     /// A cognitive epoch committed these writes. Keys and values are already scrubbed when recorded.
@@ -38,6 +42,21 @@ impl EventSink for VecSink {
         self.events.push(event);
         Ok(())
     }
+}
+
+/// Validates an FSM transition and records it before updating `state`.
+/// Illegal transitions never reach the sink; a sink error leaves `state` unchanged.
+pub fn transition_recorded(
+    state: &mut TaskState,
+    task: &TaskId,
+    event: TaskEvent,
+    sink: &mut dyn EventSink,
+) -> EonResult<()> {
+    let from = *state;
+    let to = next_state(from, event)?;
+    sink.record(KernelEvent::TaskTransition { task: task.clone(), from, to })?;
+    *state = to;
+    Ok(())
 }
 
 /// Splices a subgraph and records the event. The event is written only after the splice succeeds, and the graph is
@@ -94,6 +113,38 @@ mod tests {
         let id = TaskId::new();
         wf.insert(Task::new(id.clone(), [])).unwrap();
         (wf, id)
+    }
+
+    #[test]
+    fn uncertain_outcome_records_one_transition_and_does_not_restart() {
+        let task = TaskId::new();
+        let mut state = TaskState::Running;
+        let mut sink = VecSink::default();
+        transition_recorded(&mut state, &task, TaskEvent::OutcomeUncertain, &mut sink).unwrap();
+        assert_eq!(state, TaskState::UncertainFailure);
+
+        assert!(matches!(
+            transition_recorded(&mut state, &task, TaskEvent::Start, &mut sink),
+            Err(EonError::ValidationError(_))
+        ));
+        assert_eq!(state, TaskState::UncertainFailure);
+        assert_eq!(
+            sink.events,
+            [KernelEvent::TaskTransition { task, from: TaskState::Running, to: TaskState::UncertainFailure }]
+        );
+    }
+
+    #[test]
+    fn failed_recording_does_not_release_an_uncertain_task_for_retry() {
+        let mut state = TaskState::UncertainFailure;
+        let result = transition_recorded(
+            &mut state,
+            &TaskId::new(),
+            TaskEvent::RequeueIdempotent,
+            &mut FailingSink,
+        );
+        assert!(matches!(result, Err(EonError::InternalError(message)) if message == "disk full"));
+        assert_eq!(state, TaskState::UncertainFailure);
     }
 
     #[test]

@@ -7,9 +7,11 @@ license.workspace = true
 
 [dependencies]
 eon-cli = { path = "../eon-cli" }
+eon-foundation = { path = "../eon-foundation" }
+eon-kernel = { path = "../eon-kernel" }
 eon-primitives = { path = "../eon-primitives" }
 libc = "0.2"
+socket2 = "0.6"
 
 [dev-dependencies]
-eon-foundation = { path = "../eon-foundation" }
 tempfile = "3"

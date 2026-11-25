@@ -5,11 +5,24 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+# Builds without audio support still have the read-only journal console.
+audio-input = ["dep:cpal"]
+
 [dependencies]
+cpal = { version = "0.18", optional = true }
 crossterm = "0.28"
 eon-foundation = { path = "../eon-foundation" }
 eon-primitives = { path = "../eon-primitives" }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+rand = "0.8"
 ratatui = "0.29"
+ratatui-image = { version = "9.0.0", default-features = false }
+zune-core = "0.5.3"
+zune-jpeg = "0.5.15"
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1", features = ["fs"] }
 
 [[bin]]
 name = "eon"
