@@ -1,0 +1,27 @@
+[package]
+name = "eon-web"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "eon-web"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+eon-canvas = { path = "../eon-canvas" }
+eon-cli = { path = "../eon-cli" }
+eon-cognition = { path = "../eon-cognition", default-features = false }
+eon-cyber = { path = "../eon-cyber", default-features = false }
+eon-foundation = { path = "../eon-foundation" }
+eon-primitives = { path = "../eon-primitives" }
+eon-voice = { path = "../eon-voice" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }

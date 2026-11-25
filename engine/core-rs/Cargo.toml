@@ -15,6 +15,7 @@ members = [
     "crates/eon-daemon",
     "crates/eon-canvas",
     "crates/eon-ebpf",
+    "crates/eon-web",
 ]
 
 [workspace.package]

@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eon</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --line: #2a2f3a;
+    --text: #e6e8ee;
+    --muted: #8b93a7;
+    --accent: #6ea8fe;
+    --ok: #5fd39a;
+    --warn: #f0b429;
+    --bad: #ef6461;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex;
+    min-height: 100vh;
+  }
+  nav {
+    width: 200px;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 16px 0;
+    flex-shrink: 0;
+  }
+  nav h1 { font-size: 18px; margin: 0 16px 16px; }
+  nav a {
+    display: block;
+    padding: 8px 16px;
+    color: var(--muted);
+    text-decoration: none;
+    border-left: 3px solid transparent;
+  }
+  nav a:hover { color: var(--text); }
+  nav a.active { color: var(--text); border-left-color: var(--accent); background: #1d2230; }
+  main { flex: 1; padding: 24px 32px; min-width: 0; }
+  section { display: none; }
+  section.active { display: block; }
+  h2 { font-size: 20px; margin: 0 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 20px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .card h3 { font-size: 15px; margin: 0 0 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .stat { background: #111419; border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
+  .stat .label { color: var(--muted); font-size: 12px; }
+  .stat .value { font-size: 22px; font-family: var(--mono); }
+  label { display: block; color: var(--muted); font-size: 12px; margin: 8px 0 4px; }
+  textarea, input, select {
+    width: 100%;
+    background: #0c0e12;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px;
+    font: 13px var(--mono);
+  }
+  textarea { min-height: 140px; resize: vertical; }
+  input, select { width: auto; min-width: 140px; font-family: system-ui, sans-serif; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button {
+    background: var(--accent);
+    color: #0b1020;
+    border: 0;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.secondary { background: #2a2f3a; color: var(--text); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  td.mono, .mono { font-family: var(--mono); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
+  .ok { color: var(--ok); }
+  .warn { color: var(--warn); }
+  .bad { color: var(--bad); }
+  .error { color: var(--bad); margin-top: 8px; white-space: pre-wrap; }
+  pre {
+    background: #0c0e12;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px;
+    overflow: auto;
+    max-height: 320px;
+    font: 12px/1.45 var(--mono);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  svg { background: #0c0e12; border: 1px solid var(--line); border-radius: 6px; max-width: 100%; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 24px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 800px) {
+    body { flex-direction: column; }
+    nav { width: auto; display: flex; flex-wrap: wrap; padding: 8px; }
+    nav h1 { width: 100%; margin: 4px 8px; }
+    nav a { border-left: 0; border-bottom: 3px solid transparent; }
+    nav a.active { border-bottom-color: var(--accent); border-left-color: transparent; }
+    main { padding: 16px; }
+    .split { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<nav>
+  <h1>Eon</h1>
+  <a href="#overview" data-tab="overview">Overview</a>
+  <a href="#journal" data-tab="journal">Journal</a>
+  <a href="#profiles" data-tab="profiles">Profiles</a>
+  <a href="#cyber" data-tab="cyber">Cyber review</a>
+  <a href="#diff" data-tab="diff">Diff review</a>
+  <a href="#canvas" data-tab="canvas">Canvas</a>
+  <a href="#voice" data-tab="voice">Voice</a>
+</nav>
+<main>
+
+<section id="overview">
+  <h2>Overview</h2>
+  <p class="lead">Journal state and which voice engines this server loaded.</p>
+  <div class="card">
+    <div class="grid" id="status-grid"><div class="stat"><div class="label">Loading</div></div></div>
+    <div class="error" id="status-error"></div>
+  </div>
+</section>
+
+<section id="journal">
+  <h2>Journal</h2>
+  <p class="lead">Read-only view of the append-only event journal, newest cursor first.</p>
+  <div class="card">
+    <div class="row">
+      <label style="margin:0">From seq <input id="journal-from" type="number" min="0" value="0"></label>
+      <label style="margin:0">Per page
+        <select id="journal-limit">
+          <option>25</option><option selected>50</option><option>100</option><option>500</option>
+        </select>
+      </label>
+      <button id="journal-load">Load</button>
+      <button class="secondary" id="journal-prev" disabled>Previous</button>
+      <button class="secondary" id="journal-next" disabled>Next</button>
+    </div>
+    <div class="error" id="journal-error"></div>
+    <table>
+      <thead><tr><th>Seq</th><th>Mono ns</th><th>Flags</th><th>Bytes</th><th>Preview</th></tr></thead>
+      <tbody id="journal-rows"></tbody>
+    </table>
+  </div>
+</section>
+
+<section id="profiles">
+  <h2>Model profiles</h2>
+  <p class="lead">Model tiers and the device memory each one needs.</p>
+  <div class="card">
+    <table>
+      <thead><tr><th>Profile</th><th>Lock key</th><th>Min device memory (GB)</th></tr></thead>
+      <tbody id="profile-rows"></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h3>Select for device memory</h3>
+    <div class="row">
+      <input id="profile-memory" type="number" min="0" step="0.5" value="16">
+      <button id="profile-select">Select</button>
+    </div>
+    <p id="profile-result" class="mono"></p>
+    <div class="error" id="profile-error"></div>
+  </div>
+</section>
+
+<section id="cyber">
+  <h2>Cyber review</h2>
+  <p class="lead">Taint and defense checks on one source file (up to 16 KiB). Each check reports either an observed range or the gap that blocked it.</p>
+  <div class="card">
+    <label>Language</label>
+    <select id="cyber-lang"><option value="rust">Rust</option><option value="python">Python</option></select>
+    <label>Source</label>
+    <textarea id="cyber-source" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:12px">
+      <button id="cyber-run">Review</button>
+    </div>
+    <div class="error" id="cyber-error"></div>
+    <table>
+      <thead><tr><th>Rule</th><th>CWE</th><th>Result</th><th>Range or gap</th><th>Recommendation</th></tr></thead>
+      <tbody id="cyber-rows"></tbody>
+    </table>
+  </div>
+</section>
+
+<section id="diff">
+  <h2>Diff review</h2>
+  <p class="lead">Pairs functions between an old and a new version and reports which ones changed, were added, or were removed.</p>
+  <div class="card">
+    <label>Language</label>
+    <select id="diff-lang"><option value="rust">Rust</option><option value="python">Python</option></select>
+    <div class="split">
+      <div>
+        <label>Old</label>
+        <textarea id="diff-old" spellcheck="false"></textarea>
+      </div>
+      <div>
+        <label>New</label>
+        <textarea id="diff-new" spellcheck="false"></textarea>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="diff-run">Compare</button>
+    </div>
+    <div class="error" id="diff-error"></div>
+    <table>
+      <thead><tr><th>Status</th><th>Old function</th><th>New function</th></tr></thead>
+      <tbody id="diff-rows"></tbody>
+    </table>
+  </div>
+</section>
+
+<section id="canvas">
+  <h2>Canvas layout</h2>
+  <p class="lead">Layered layout of a directed graph. Nodes are numbered from 0. Each edge is written as "from to" on its own line.</p>
+  <div class="card">
+    <div class="row">
+      <label style="margin:0">Nodes <input id="canvas-nodes" type="number" min="1" max="256" value="4"></label>
+      <button id="canvas-run">Layout</button>
+    </div>
+    <label>Edges</label>
+    <textarea id="canvas-edges" spellcheck="false" style="min-height:90px">0 1
+0 2
+1 3
+2 3</textarea>
+    <div class="error" id="canvas-error"></div>
+    <p class="mono" id="canvas-info"></p>
+    <svg id="canvas-svg" width="100%" height="360" viewBox="0 0 640 360" preserveAspectRatio="xMinYMin meet"></svg>
+  </div>
+</section>
+
+<section id="voice">
+  <h2>Voice</h2>
+  <p class="lead">Text to speech and speech recognition through the engines loaded at startup. Recognition runs on 16 kHz mono audio from this browser's microphone.</p>
+  <div class="card">
+    <h3>Speak</h3>
+    <textarea id="tts-text" style="min-height:80px">Eon is online.</textarea>
+    <div class="row" style="margin-top:12px">
+      <label style="margin:0">Speed <input id="tts-speed" type="number" min="0.5" max="2" step="0.1" value="1"></label>
+      <button id="tts-run">Synthesize</button>
+    </div>
+    <audio id="tts-audio" controls style="margin-top:12px;display:none"></audio>
+    <div class="error" id="tts-error"></div>
+  </div>
+  <div class="card">
+    <h3>Listen</h3>
+    <div class="row">
+      <button id="asr-toggle">Start recording</button>
+      <span id="asr-state" class="mono"></span>
+    </div>
+    <pre id="asr-text"></pre>
+    <div class="error" id="asr-error"></div>
+  </div>
+</section>
+
+<footer>
+  Local only, bound to loopback with no authentication. Not exposed here: capability dispatch and approval, journal writes and repair, kernel tick and countermand, write-back to source, mesh export, eBPF attach, and memory recall. These either change state or expose credentials and private notes.
+</footer>
+
+</main>
+<script>
+"use strict";
+
+function el(id) { return document.getElementById(id); }
+
+function show(text, node) {
+  node.textContent = text || "";
+}
+
+async function api(path, options) {
+  const response = await fetch(path, options);
+  const contentType = response.headers.get("content-type") || "";
+  if (!response.ok) {
+    let message = response.status + " " + response.statusText;
+    if (contentType.includes("application/json")) {
+      const body = await response.json();
+      if (body.error) message = body.error;
+    }
+    throw new Error(message);
+  }
+  return contentType.includes("application/json") ? response.json() : response;
+}
+
+function postJson(path, body) {
+  return api(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function cell(text, className) {
+  const td = document.createElement("td");
+  if (className) td.className = className;
+  td.textContent = text === null || text === undefined ? "" : String(text);
+  return td;
+}
+
+function row(cells) {
+  const tr = document.createElement("tr");
+  cells.forEach((c) => tr.appendChild(c));
+  return tr;
+}
+
+function replaceRows(tbody, rows) {
+  tbody.replaceChildren(...rows);
+}
+
+function tabFromHash() {
+  const name = location.hash.replace("#", "") || "overview";
+  return document.getElementById(name) ? name : "overview";
+}
+
+function activate() {
+  const name = tabFromHash();
+  document.querySelectorAll("section").forEach((s) => s.classList.toggle("active", s.id === name));
+  document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("active", a.dataset.tab === name));
+  if (name === "overview") loadStatus();
+  if (name === "profiles") loadProfiles();
+}
+
+async function loadStatus() {
+  const grid = el("status-grid");
+  const errorBox = el("status-error");
+  show("", errorBox);
+  try {
+    const status = await api("/api/status");
+    const stat = (label, value, cls) => {
+      const div = document.createElement("div");
+      div.className = "stat";
+      const l = document.createElement("div");
+      l.className = "label";
+      l.textContent = label;
+      const v = document.createElement("div");
+      v.className = "value " + (cls || "");
+      v.textContent = value;
+      div.append(l, v);
+      return div;
+    };
+    const voice = (on) => (on ? ["loaded", "ok"] : ["not configured", "warn"]);
+    const [ttsText, ttsCls] = voice(status.voice.tts);
+    const [asrText, asrCls] = voice(status.voice.asr);
+    grid.replaceChildren(
+      stat("Segments", status.journal.segments),
+      stat("Frames", status.journal.frames),
+      stat("Last seq", status.journal.last_seq === null ? "none" : status.journal.last_seq),
+      stat("TTS", ttsText, ttsCls),
+      stat("ASR", asrText, asrCls),
+    );
+  } catch (err) {
+    grid.replaceChildren();
+    show(err.message, errorBox);
+  }
+}
+
+let journalCursors = [];
+let journalCurrent = 0;
+let journalNext = null;
+
+async function loadJournal(from) {
+  const limit = el("journal-limit").value;
+  const errorBox = el("journal-error");
+  show("", errorBox);
+  try {
+    const page = await api("/api/journal?from=" + from + "&limit=" + limit);
+    journalCurrent = from;
+    journalNext = page.next_from;
+    replaceRows(el("journal-rows"), page.frames.map((f) => row([
+      cell(f.seq, "mono"),
+      cell(f.mono_ts_ns, "mono"),
+      cell(f.flags, "mono"),
+      cell(f.bytes, "mono"),
+      cell(f.preview, "mono"),
+    ])));
+    el("journal-prev").disabled = journalCursors.length === 0;
+    el("journal-next").disabled = journalNext === null || journalNext === undefined;
+    el("journal-from").value = from;
+  } catch (err) {
+    show(err.message, errorBox);
+  }
+}
+
+async function loadProfiles() {
+  try {
+    const profiles = await api("/api/profiles");
+    replaceRows(el("profile-rows"), profiles.map((p) => row([
+      cell(p.profile, "mono"),
+      cell(p.lock_key, "mono"),
+      cell(p.min_device_memory_gb, "mono"),
+    ])));
+  } catch (err) {
+    show(err.message, el("profile-error"));
+  }
+}
+
+async function selectProfile() {
+  const errorBox = el("profile-error");
+  const result = el("profile-result");
+  show("", errorBox);
+  show("", result);
+  try {
+    const memory = encodeURIComponent(el("profile-memory").value);
+    const profile = await api("/api/profiles/select?memory_gb=" + memory);
+    show("Selected " + profile.profile + " (lock key " + profile.lock_key + ")", result);
+  } catch (err) {
+    show(err.message, errorBox);
+  }
+}
+
+async function runCyber() {
+  const errorBox = el("cyber-error");
+  show("", errorBox);
+  try {
+    const report = await postJson("/api/cyber/review", {
+      language: el("cyber-lang").value,
+      source: el("cyber-source").value,
+    });
+    replaceRows(el("cyber-rows"), report.checks.map((c) => {
+      const result = c.observed ? "observed" : "unverified";
+      const resultCls = c.observed ? "warn" : "ok";
+      const where = c.observed ? "bytes " + c.range[0] + " to " + c.range[1] : c.gap;
+      return row([
+        cell(c.rule, "mono"),
+        cell(c.cwe, "mono"),
+        cell(result, resultCls),
+        cell(where, "mono"),
+        cell(c.recommendation),
+      ]);
+    }));
+  } catch (err) {
+    show(err.message, errorBox);
+  }
+}
+
+async function runDiff() {
+  const errorBox = el("diff-error");
+  show("", errorBox);
+  try {
+    const view = await postJson("/api/review/diff", {
+      language: el("diff-lang").value,
+      old: el("diff-old").value,
+      new: el("diff-new").value,
+    });
+    const name = (blocks, index) => (index === null || index === undefined ? "" : blocks[index].name + " (line " + blocks[index].start_line + ")");
+    const clsFor = { unchanged: "ok", changed: "warn", added: "ok", removed: "bad" };
+    replaceRows(el("diff-rows"), view.pairings.map((p) => row([
+      cell(p.status, clsFor[p.status]),
+      cell(name(view.old, p.old), "mono"),
+      cell(name(view.new, p.new), "mono"),
+    ])));
+  } catch (err) {
+    show(err.message, errorBox);
+  }
+}
+
+function parseEdges(text) {
+  return text.split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const parts = line.split(/\s+/).map(Number);
+      if (parts.length !== 2 || parts.some((n) => !Number.isInteger(n) || n < 0)) {
+        throw new Error("bad edge line: " + line);
+      }
+      return parts;
+    });
+}
+
+function drawLayout(layout, nodeCount) {
+  const svg = el("canvas-svg");
+  const ns = "http://www.w3.org/2000/svg";
+  const maxRank = Math.max(0, ...layout.rank);
+  const maxSlot = Math.max(0, ...layout.slot);
+  const xStep = 120;
+  const yStep = 80;
+  const margin = 40;
+  const width = margin * 2 + maxSlot * xStep;
+  const height = margin * 2 + maxRank * yStep;
+  svg.setAttribute("viewBox", "0 0 " + Math.max(640, width) + " " + Math.max(360, height));
+  const pos = (rank, slot) => [margin + slot * xStep, margin + rank * yStep];
+  const nodes = [];
+  for (let i = 0; i < nodeCount; i++) {
+    const [x, y] = pos(layout.rank[i], layout.slot[i]);
+    const g = document.createElementNS(ns, "g");
+    const c = document.createElementNS(ns, "circle");
+    c.setAttribute("cx", x);
+    c.setAttribute("cy", y);
+    c.setAttribute("r", 18);
+    c.setAttribute("fill", "#1d2230");
+    c.setAttribute("stroke", "#6ea8fe");
+    const t = document.createElementNS(ns, "text");
+    t.setAttribute("x", x);
+    t.setAttribute("y", y + 5);
+    t.setAttribute("text-anchor", "middle");
+    t.setAttribute("fill", "#e6e8ee");
+    t.textContent = String(i);
+    g.append(c, t);
+    nodes.push(g);
+  }
+  const edges = layout.edge_paths.map((path) => {
+    const p = document.createElementNS(ns, "polyline");
+    p.setAttribute("points", path.map(([r, s]) => pos(r, s).join(",")).join(" "));
+    p.setAttribute("fill", "none");
+    p.setAttribute("stroke", "#8b93a7");
+    p.setAttribute("stroke-width", "1.5");
+    return p;
+  });
+  svg.replaceChildren(...edges, ...nodes);
+}
+
+async function runLayout() {
+  const errorBox = el("canvas-error");
+  show("", errorBox);
+  try {
+    const nodes = Number(el("canvas-nodes").value);
+    const edges = parseEdges(el("canvas-edges").value);
+    const layout = await postJson("/api/canvas/layout", { nodes, edges });
+    show("Ranks: " + (Math.max(-1, ...layout.rank) + 1) + ", crossings: " + layout.crossings, el("canvas-info"));
+    drawLayout(layout, nodes);
+  } catch (err) {
+    show(err.message, errorBox);
+  }
+}
+
+let ttsUrl = null;
+
+async function runTts() {
+  const errorBox = el("tts-error");
+  const audio = el("tts-audio");
+  show("", errorBox);
+  try {
+    const response = await api("/api/voice/tts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: el("tts-text").value, speed: Number(el("tts-speed").value) }),
+    });
+    const blob = await response.blob();
+    if (ttsUrl) URL.revokeObjectURL(ttsUrl);
+    ttsUrl = URL.createObjectURL(blob);
+    audio.src = ttsUrl;
+    audio.style.display = "block";
+    audio.play().catch(() => {});
+  } catch (err) {
+    show(err.message, errorBox);
+  }
+}
+
+let recording = null;
+
+async function toggleAsr() {
+  const button = el("asr-toggle");
+  const state = el("asr-state");
+  const errorBox = el("asr-error");
+  show("", errorBox);
+  if (recording) {
+    const { context, stream, processor, chunks } = recording;
+    recording = null;
+    processor.disconnect();
+    stream.getTracks().forEach((t) => t.stop());
+    await context.close();
+    button.textContent = "Start recording";
+    show("Transcribing", state);
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    const pcm = new Float32Array(total);
+    let offset = 0;
+    chunks.forEach((c) => { pcm.set(c, offset); offset += c.length; });
+    try {
+      const body = await api("/api/voice/asr", {
+        method: "POST",
+        headers: { "content-type": "application/octet-stream" },
+        body: pcm.buffer,
+      });
+      el("asr-text").textContent = body.text || "(no speech)";
+      show("", state);
+    } catch (err) {
+      show(err.message, errorBox);
+      show("", state);
+    }
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
+    const context = new AudioContext({ sampleRate: 16000 });
+    const source = context.createMediaStreamSource(stream);
+    const processor = context.createScriptProcessor(4096, 1, 1);
+    const chunks = [];
+    const limit = 60 * 16000;
+    let captured = 0;
+    processor.onaudioprocess = (event) => {
+      if (captured >= limit) return;
+      const data = event.inputBuffer.getChannelData(0);
+      const copy = new Float32Array(data);
+      chunks.push(copy);
+      captured += copy.length;
+    };
+    source.connect(processor);
+    processor.connect(context.destination);
+    recording = { context, stream, processor, chunks };
+    button.textContent = "Stop and transcribe";
+    show("Recording (up to 60 s)", state);
+  } catch (err) {
+    show(err.message, errorBox);
+  }
+}
+
+window.addEventListener("hashchange", activate);
+el("journal-load").addEventListener("click", () => {
+  journalCursors = [];
+  loadJournal(Number(el("journal-from").value) || 0);
+});
+el("journal-next").addEventListener("click", () => {
+  if (journalNext === null || journalNext === undefined) return;
+  journalCursors.push(journalCurrent);
+  loadJournal(journalNext);
+});
+el("journal-prev").addEventListener("click", () => {
+  if (journalCursors.length === 0) return;
+  loadJournal(journalCursors.pop());
+});
+el("profile-select").addEventListener("click", selectProfile);
+el("cyber-run").addEventListener("click", runCyber);
+el("diff-run").addEventListener("click", runDiff);
+el("canvas-run").addEventListener("click", runLayout);
+el("tts-run").addEventListener("click", runTts);
+el("asr-toggle").addEventListener("click", toggleAsr);
+
+api("/api/status").then((status) => {
+  if (!status.voice.asr) el("asr-state").textContent = "ASR not configured on this server";
+  if (!status.voice.tts) el("tts-error").textContent = "TTS not configured on this server";
+}).catch(() => {});
+
+activate();
+</script>
+</body>
+</html>
