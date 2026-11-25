@@ -13,9 +13,13 @@ path = "src/main.rs"
 axum = "0.8"
 eon-canvas = { path = "../eon-canvas" }
 eon-cli = { path = "../eon-cli" }
-eon-cognition = { path = "../eon-cognition", default-features = false }
+eon-cognition = { path = "../eon-cognition", default-features = false, features = ["loro-memory"] }
 eon-cyber = { path = "../eon-cyber", default-features = false }
+eon-daemon = { path = "../eon-daemon" }
+eon-ebpf = { path = "../eon-ebpf", features = ["self-fsync"] }
 eon-foundation = { path = "../eon-foundation" }
+eon-kernel = { path = "../eon-kernel" }
+eon-mesh = { path = "../eon-mesh" }
 eon-primitives = { path = "../eon-primitives" }
 eon-voice = { path = "../eon-voice" }
 serde = { version = "1", features = ["derive"] }

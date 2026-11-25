@@ -13,6 +13,8 @@ struct Config {
     addr: SocketAddr,
     tts: Option<(PathBuf, PathBuf)>,
     asr_dir: Option<PathBuf>,
+    memory: Option<PathBuf>,
+    daemon_socket: Option<PathBuf>,
 }
 
 fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Config, String> {
@@ -21,6 +23,8 @@ fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Config, String>
     let mut tts_model = None;
     let mut tts_voice = None;
     let mut asr_dir = None;
+    let mut memory = None;
+    let mut daemon_socket = None;
     let mut args = args.into_iter();
     while let Some(flag) = args.next() {
         let mut value = || args.next().ok_or_else(|| format!("{flag} needs a value"));
@@ -30,6 +34,8 @@ fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Config, String>
             "--tts-model" => tts_model = Some(PathBuf::from(value()?)),
             "--tts-voice" => tts_voice = Some(PathBuf::from(value()?)),
             "--asr-dir" => asr_dir = Some(PathBuf::from(value()?)),
+            "--memory" => memory = Some(PathBuf::from(value()?)),
+            "--daemon-socket" => daemon_socket = Some(PathBuf::from(value()?)),
             "-h" | "--help" => return Err(usage()),
             other => return Err(format!("unknown argument {other:?}\n{}", usage())),
         }
@@ -53,12 +59,15 @@ fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Config, String>
         addr,
         tts,
         asr_dir,
+        memory,
+        daemon_socket,
     })
 }
 
 fn usage() -> String {
     "usage: eon-web --journal DIR [--addr 127.0.0.1:8787] \
-     [--tts-model FILE --tts-voice FILE] [--asr-dir DIR]"
+     [--tts-model FILE --tts-voice FILE] [--asr-dir DIR] \
+     [--memory FILE] [--daemon-socket PATH]"
         .to_owned()
 }
 
@@ -71,8 +80,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(2);
         }
     };
+    if let Some(memory) = &config.memory
+        && !memory.is_file()
+    {
+        eprintln!("--memory {} does not exist", memory.display());
+        std::process::exit(2);
+    }
 
-    let mut state = AppState::new(&config.journal);
+    let mut state = AppState::new(&config.journal)?;
+    if let Some(memory) = &config.memory {
+        eprintln!("opening memory {}", memory.display());
+        state = state.with_recall(memory)?;
+    }
+    if let Some(socket) = &config.daemon_socket {
+        state = state.with_daemon_socket(socket);
+    }
     if let Some((model, voice)) = &config.tts {
         eprintln!("loading TTS from {}", model.display());
         state = state.with_tts(KokoroTts::load(model, voice)?);
@@ -119,5 +141,23 @@ mod tests {
     fn tts_needs_both_model_and_voice() {
         let err = parse_args(args(&["--journal", "j", "--tts-model", "m.onnx"])).unwrap_err();
         assert!(err.contains("together"), "{err}");
+    }
+
+    #[test]
+    fn memory_and_daemon_socket_are_optional_flags() {
+        let config = parse_args(args(&[
+            "--journal",
+            "j",
+            "--memory",
+            "mem.loro",
+            "--daemon-socket",
+            "/run/eon.sock",
+        ]))
+        .unwrap();
+        assert_eq!(config.memory, Some(PathBuf::from("mem.loro")));
+        assert_eq!(config.daemon_socket, Some(PathBuf::from("/run/eon.sock")));
+        let bare = parse_args(args(&["--journal", "j"])).unwrap();
+        assert_eq!(bare.memory, None);
+        assert_eq!(bare.daemon_socket, None);
     }
 }

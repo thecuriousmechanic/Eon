@@ -3,652 +3,866 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Eon</title>
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:,">
+<title>Eon console</title>
 <style>
-  :root {
-    --bg: #0f1115;
-    --panel: #171a21;
-    --line: #2a2f3a;
-    --text: #e6e8ee;
-    --muted: #8b93a7;
-    --accent: #6ea8fe;
-    --ok: #5fd39a;
-    --warn: #f0b429;
-    --bad: #ef6461;
-    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-    display: flex;
-    min-height: 100vh;
-  }
-  nav {
-    width: 200px;
-    background: var(--panel);
-    border-right: 1px solid var(--line);
-    padding: 16px 0;
-    flex-shrink: 0;
-  }
-  nav h1 { font-size: 18px; margin: 0 16px 16px; }
-  nav a {
-    display: block;
-    padding: 8px 16px;
-    color: var(--muted);
-    text-decoration: none;
-    border-left: 3px solid transparent;
-  }
-  nav a:hover { color: var(--text); }
-  nav a.active { color: var(--text); border-left-color: var(--accent); background: #1d2230; }
-  main { flex: 1; padding: 24px 32px; min-width: 0; }
-  section { display: none; }
-  section.active { display: block; }
-  h2 { font-size: 20px; margin: 0 0 4px; }
-  p.lead { color: var(--muted); margin: 0 0 20px; }
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 16px;
-  }
-  .card h3 { font-size: 15px; margin: 0 0 12px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-  .stat { background: #111419; border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
-  .stat .label { color: var(--muted); font-size: 12px; }
-  .stat .value { font-size: 22px; font-family: var(--mono); }
-  label { display: block; color: var(--muted); font-size: 12px; margin: 8px 0 4px; }
-  textarea, input, select {
-    width: 100%;
-    background: #0c0e12;
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 8px;
-    font: 13px var(--mono);
-  }
-  textarea { min-height: 140px; resize: vertical; }
-  input, select { width: auto; min-width: 140px; font-family: system-ui, sans-serif; }
-  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  button {
-    background: var(--accent);
-    color: #0b1020;
-    border: 0;
-    border-radius: 6px;
-    padding: 8px 14px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  button.secondary { background: #2a2f3a; color: var(--text); }
-  button:disabled { opacity: 0.5; cursor: default; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 500; }
-  td.mono, .mono { font-family: var(--mono); }
-  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
-  .ok { color: var(--ok); }
-  .warn { color: var(--warn); }
-  .bad { color: var(--bad); }
-  .error { color: var(--bad); margin-top: 8px; white-space: pre-wrap; }
-  pre {
-    background: #0c0e12;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 10px;
-    overflow: auto;
-    max-height: 320px;
-    font: 12px/1.45 var(--mono);
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-  svg { background: #0c0e12; border: 1px solid var(--line); border-radius: 6px; max-width: 100%; }
-  footer { color: var(--muted); font-size: 12px; margin-top: 24px; border-top: 1px solid var(--line); padding-top: 12px; }
-  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  @media (max-width: 800px) {
-    body { flex-direction: column; }
-    nav { width: auto; display: flex; flex-wrap: wrap; padding: 8px; }
-    nav h1 { width: 100%; margin: 4px 8px; }
-    nav a { border-left: 0; border-bottom: 3px solid transparent; }
-    nav a.active { border-bottom-color: var(--accent); border-left-color: transparent; }
-    main { padding: 16px; }
-    .split { grid-template-columns: 1fr; }
-  }
+:root {
+  --bg: #121311;
+  --panel: #1a1c1a;
+  --raise: #232622;
+  --line: #2e312d;
+  --text: #ebe9e2;
+  --muted: #9b9e95;
+  --accent: #d9a24a;
+  --accent-ink: #17130a;
+  --ok: #9cbf7a;
+  --err: #e58a74;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 100vh; }
+.side { border-right: 1px solid var(--line); padding: 20px 14px; position: sticky; top: 0; height: 100vh; overflow: auto; }
+.brand { font-weight: 600; font-size: 15px; margin: 0 8px 20px; }
+.brand span { color: var(--muted); font-weight: 400; }
+.group { margin-bottom: 18px; }
+.group-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 0 8px; margin-bottom: 4px; }
+.side a { display: block; color: var(--text); text-decoration: none; padding: 6px 8px; border-left: 2px solid transparent; }
+.side a:hover { background: var(--raise); }
+.side a[aria-current="page"] { border-left-color: var(--accent); background: var(--raise); color: var(--accent); }
+main { padding: 28px clamp(16px, 3vw, 40px); min-width: 0; }
+#page { max-width: 1080px; }
+h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em; }
+h2 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+h3 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 18px 0 6px; }
+.lede { color: var(--muted); margin: 0 0 18px; max-width: 72ch; }
+.panel { border-top: 1px solid var(--line); padding: 18px 0 22px; }
+.toolbar, .form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin: 0 0 14px; }
+.field { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; min-width: 0; }
+.field.wide { flex: 1 1 320px; }
+.field.wide input, .field.wide textarea { width: 100%; }
+input, select, textarea { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 7px 9px; min-width: 0; }
+input[type="range"] { padding: 0; min-width: 180px; }
+textarea { min-height: 120px; font-family: var(--mono); font-size: 13px; resize: vertical; width: 100%; }
+button { font: inherit; color: var(--text); background: var(--raise); border: 1px solid var(--line); border-radius: 4px; padding: 7px 14px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.table-wrap { overflow-x: auto; border-top: 1px solid var(--line); margin-bottom: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.empty { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+.muted { color: var(--muted); }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 22px; margin: 0 0 12px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; word-break: break-word; }
+.msg { margin: 10px 0; padding: 8px 12px; border-left: 2px solid var(--muted); white-space: pre-wrap; word-break: break-word; }
+.msg.ok { border-color: var(--ok); }
+.msg.err { border-color: var(--err); color: var(--err); }
+.loading { color: var(--muted); }
+pre.out { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; white-space: pre-wrap; word-break: break-word; font: 13px/1.5 var(--mono); margin: 8px 0 12px; max-height: 360px; overflow: auto; }
+.hit { border-top: 1px solid var(--line); padding: 12px 0; }
+.hit header { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; }
+.diff-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+details { margin: 4px 0; }
+summary { cursor: pointer; padding: 6px 0; }
+.graph-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 4px; padding: 12px; background: var(--panel); margin-bottom: 14px; }
+.graph { display: block; width: 100%; max-width: 640px; height: auto; margin: 0 auto; }
+.graph .edge { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.graph .node { fill: var(--raise); stroke: var(--accent); stroke-width: 1.5; }
+.graph .node-label { fill: var(--text); font-size: 12px; font-family: var(--mono); }
+audio { width: 100%; max-width: 560px; margin: 8px 0; }
+@media (max-width: 760px) {
+  .shell { grid-template-columns: 1fr; }
+  .side { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px 20px; }
+  .brand { width: 100%; margin-bottom: 8px; }
+  .group { margin-bottom: 8px; }
+  .diff-cols { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 </head>
 <body>
-<nav>
-  <h1>Eon</h1>
-  <a href="#overview" data-tab="overview">Overview</a>
-  <a href="#journal" data-tab="journal">Journal</a>
-  <a href="#profiles" data-tab="profiles">Profiles</a>
-  <a href="#cyber" data-tab="cyber">Cyber review</a>
-  <a href="#diff" data-tab="diff">Diff review</a>
-  <a href="#canvas" data-tab="canvas">Canvas</a>
-  <a href="#voice" data-tab="voice">Voice</a>
-</nav>
-<main>
-
-<section id="overview">
-  <h2>Overview</h2>
-  <p class="lead">Journal state and which voice engines this server loaded.</p>
-  <div class="card">
-    <div class="grid" id="status-grid"><div class="stat"><div class="label">Loading</div></div></div>
-    <div class="error" id="status-error"></div>
-  </div>
-</section>
-
-<section id="journal">
-  <h2>Journal</h2>
-  <p class="lead">Read-only view of the append-only event journal, newest cursor first.</p>
-  <div class="card">
-    <div class="row">
-      <label style="margin:0">From seq <input id="journal-from" type="number" min="0" value="0"></label>
-      <label style="margin:0">Per page
-        <select id="journal-limit">
-          <option>25</option><option selected>50</option><option>100</option><option>500</option>
-        </select>
-      </label>
-      <button id="journal-load">Load</button>
-      <button class="secondary" id="journal-prev" disabled>Previous</button>
-      <button class="secondary" id="journal-next" disabled>Next</button>
+<div class="shell">
+  <nav class="side" aria-label="Sections">
+    <div class="brand">Eon <span>console</span></div>
+    <div class="group"><div class="group-label">Overview</div><a href="#overview">Status</a></div>
+    <div class="group">
+      <div class="group-label">Runtime</div>
+      <a href="#journal">Journal</a>
+      <a href="#kernel">Kernel</a>
+      <a href="#sensor">Sensor</a>
+      <a href="#daemon">Daemon</a>
+      <a href="#capabilities">Capabilities</a>
+      <a href="#profiles">Model profiles</a>
     </div>
-    <div class="error" id="journal-error"></div>
-    <table>
-      <thead><tr><th>Seq</th><th>Mono ns</th><th>Flags</th><th>Bytes</th><th>Preview</th></tr></thead>
-      <tbody id="journal-rows"></tbody>
-    </table>
-  </div>
-</section>
-
-<section id="profiles">
-  <h2>Model profiles</h2>
-  <p class="lead">Model tiers and the device memory each one needs.</p>
-  <div class="card">
-    <table>
-      <thead><tr><th>Profile</th><th>Lock key</th><th>Min device memory (GB)</th></tr></thead>
-      <tbody id="profile-rows"></tbody>
-    </table>
-  </div>
-  <div class="card">
-    <h3>Select for device memory</h3>
-    <div class="row">
-      <input id="profile-memory" type="number" min="0" step="0.5" value="16">
-      <button id="profile-select">Select</button>
+    <div class="group">
+      <div class="group-label">Knowledge</div>
+      <a href="#mesh">Mesh state</a>
+      <a href="#recall">Recall</a>
     </div>
-    <p id="profile-result" class="mono"></p>
-    <div class="error" id="profile-error"></div>
-  </div>
-</section>
-
-<section id="cyber">
-  <h2>Cyber review</h2>
-  <p class="lead">Taint and defense checks on one source file (up to 16 KiB). Each check reports either an observed range or the gap that blocked it.</p>
-  <div class="card">
-    <label>Language</label>
-    <select id="cyber-lang"><option value="rust">Rust</option><option value="python">Python</option></select>
-    <label>Source</label>
-    <textarea id="cyber-source" spellcheck="false"></textarea>
-    <div class="row" style="margin-top:12px">
-      <button id="cyber-run">Review</button>
+    <div class="group">
+      <div class="group-label">Review</div>
+      <a href="#cyber">Cyber review</a>
+      <a href="#diff">Diff review</a>
+      <a href="#canvas">Canvas layout</a>
     </div>
-    <div class="error" id="cyber-error"></div>
-    <table>
-      <thead><tr><th>Rule</th><th>CWE</th><th>Result</th><th>Range or gap</th><th>Recommendation</th></tr></thead>
-      <tbody id="cyber-rows"></tbody>
-    </table>
-  </div>
-</section>
-
-<section id="diff">
-  <h2>Diff review</h2>
-  <p class="lead">Pairs functions between an old and a new version and reports which ones changed, were added, or were removed.</p>
-  <div class="card">
-    <label>Language</label>
-    <select id="diff-lang"><option value="rust">Rust</option><option value="python">Python</option></select>
-    <div class="split">
-      <div>
-        <label>Old</label>
-        <textarea id="diff-old" spellcheck="false"></textarea>
-      </div>
-      <div>
-        <label>New</label>
-        <textarea id="diff-new" spellcheck="false"></textarea>
-      </div>
+    <div class="group">
+      <div class="group-label">Voice</div>
+      <a href="#voice">Speech</a>
     </div>
-    <div class="row" style="margin-top:12px">
-      <button id="diff-run">Compare</button>
-    </div>
-    <div class="error" id="diff-error"></div>
-    <table>
-      <thead><tr><th>Status</th><th>Old function</th><th>New function</th></tr></thead>
-      <tbody id="diff-rows"></tbody>
-    </table>
-  </div>
-</section>
-
-<section id="canvas">
-  <h2>Canvas layout</h2>
-  <p class="lead">Layered layout of a directed graph. Nodes are numbered from 0. Each edge is written as "from to" on its own line.</p>
-  <div class="card">
-    <div class="row">
-      <label style="margin:0">Nodes <input id="canvas-nodes" type="number" min="1" max="256" value="4"></label>
-      <button id="canvas-run">Layout</button>
-    </div>
-    <label>Edges</label>
-    <textarea id="canvas-edges" spellcheck="false" style="min-height:90px">0 1
-0 2
-1 3
-2 3</textarea>
-    <div class="error" id="canvas-error"></div>
-    <p class="mono" id="canvas-info"></p>
-    <svg id="canvas-svg" width="100%" height="360" viewBox="0 0 640 360" preserveAspectRatio="xMinYMin meet"></svg>
-  </div>
-</section>
-
-<section id="voice">
-  <h2>Voice</h2>
-  <p class="lead">Text to speech and speech recognition through the engines loaded at startup. Recognition runs on 16 kHz mono audio from this browser's microphone.</p>
-  <div class="card">
-    <h3>Speak</h3>
-    <textarea id="tts-text" style="min-height:80px">Eon is online.</textarea>
-    <div class="row" style="margin-top:12px">
-      <label style="margin:0">Speed <input id="tts-speed" type="number" min="0.5" max="2" step="0.1" value="1"></label>
-      <button id="tts-run">Synthesize</button>
-    </div>
-    <audio id="tts-audio" controls style="margin-top:12px;display:none"></audio>
-    <div class="error" id="tts-error"></div>
-  </div>
-  <div class="card">
-    <h3>Listen</h3>
-    <div class="row">
-      <button id="asr-toggle">Start recording</button>
-      <span id="asr-state" class="mono"></span>
-    </div>
-    <pre id="asr-text"></pre>
-    <div class="error" id="asr-error"></div>
-  </div>
-</section>
-
-<footer>
-  Local only, bound to loopback with no authentication. Not exposed here: capability dispatch and approval, journal writes and repair, kernel tick and countermand, write-back to source, mesh export, eBPF attach, and memory recall. These either change state or expose credentials and private notes.
-</footer>
-
-</main>
+  </nav>
+  <main>
+    <div id="page"></div>
+  </main>
+</div>
 <script>
 "use strict";
 
-function el(id) { return document.getElementById(id); }
+const SAMPLE_WORKFLOW = `{
+  "tasks": [
+    { "label": "fetch", "capability": "example", "operation": "fetch", "timeout_ms": 5000 },
+    { "label": "index", "capability": "example", "operation": "index", "depends_on": ["fetch"], "is_idempotent": true }
+  ]
+}`;
 
-function show(text, node) {
-  node.textContent = text || "";
+const SAMPLE_RUST = `use std::process::Command;
+
+fn run(user: &str) {
+    let cmd = format!("ls {}", user);
+    Command::new("sh").arg("-c").arg(&cmd).status().unwrap();
+}`;
+
+const SAMPLE_OLD = `fn load(path: &str) -> String {
+    std::fs::read_to_string(path).unwrap()
 }
 
-async function api(path, options) {
-  const response = await fetch(path, options);
-  const contentType = response.headers.get("content-type") || "";
-  if (!response.ok) {
-    let message = response.status + " " + response.statusText;
-    if (contentType.includes("application/json")) {
-      const body = await response.json();
-      if (body.error) message = body.error;
-    }
-    throw new Error(message);
+fn greet(name: &str) -> String {
+    format!("hello {}", name)
+}`;
+
+const SAMPLE_NEW = `fn load(path: &str) -> Result<String, std::io::Error> {
+    std::fs::read_to_string(path)
+}
+
+fn greet(name: &str) -> String {
+    format!("hello, {}", name)
+}
+
+fn shout(name: &str) -> String {
+    greet(name).to_uppercase()
+}`;
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function h(tag, props, ...kids) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(props || {})) {
+    if (value === undefined || value === null || value === false) continue;
+    if (key === "text") node.textContent = String(value);
+    else if (key === "class") node.className = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value === true ? "" : String(value));
   }
-  return contentType.includes("application/json") ? response.json() : response;
+  for (const kid of kids.flat(Infinity)) {
+    if (kid === undefined || kid === null || kid === false) continue;
+    node.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  }
+  return node;
 }
 
-function postJson(path, body) {
-  return api(path, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+function svg(tag, attrs, text) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs || {})) node.setAttribute(key, String(value));
+  if (text !== undefined) node.textContent = String(text);
+  return node;
 }
 
-function cell(text, className) {
-  const td = document.createElement("td");
-  if (className) td.className = className;
-  td.textContent = text === null || text === undefined ? "" : String(text);
-  return td;
-}
-
-function row(cells) {
-  const tr = document.createElement("tr");
-  cells.forEach((c) => tr.appendChild(c));
-  return tr;
-}
-
-function replaceRows(tbody, rows) {
-  tbody.replaceChildren(...rows);
-}
-
-function tabFromHash() {
-  const name = location.hash.replace("#", "") || "overview";
-  return document.getElementById(name) ? name : "overview";
-}
-
-function activate() {
-  const name = tabFromHash();
-  document.querySelectorAll("section").forEach((s) => s.classList.toggle("active", s.id === name));
-  document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("active", a.dataset.tab === name));
-  if (name === "overview") loadStatus();
-  if (name === "profiles") loadProfiles();
-}
-
-async function loadStatus() {
-  const grid = el("status-grid");
-  const errorBox = el("status-error");
-  show("", errorBox);
+async function request(method, path, { json, raw, blob } = {}) {
+  const headers = {};
+  let body;
+  if (method !== "GET") headers["X-Eon-UI"] = "1";
+  if (json !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(json);
+  }
+  if (raw !== undefined) {
+    headers["Content-Type"] = "application/octet-stream";
+    body = raw;
+  }
+  let res;
   try {
-    const status = await api("/api/status");
-    const stat = (label, value, cls) => {
-      const div = document.createElement("div");
-      div.className = "stat";
-      const l = document.createElement("div");
-      l.className = "label";
-      l.textContent = label;
-      const v = document.createElement("div");
-      v.className = "value " + (cls || "");
-      v.textContent = value;
-      div.append(l, v);
-      return div;
-    };
-    const voice = (on) => (on ? ["loaded", "ok"] : ["not configured", "warn"]);
-    const [ttsText, ttsCls] = voice(status.voice.tts);
-    const [asrText, asrCls] = voice(status.voice.asr);
-    grid.replaceChildren(
-      stat("Segments", status.journal.segments),
-      stat("Frames", status.journal.frames),
-      stat("Last seq", status.journal.last_seq === null ? "none" : status.journal.last_seq),
-      stat("TTS", ttsText, ttsCls),
-      stat("ASR", asrText, asrCls),
-    );
-  } catch (err) {
-    grid.replaceChildren();
-    show(err.message, errorBox);
+    res = await fetch(path, { method, headers, body, cache: "no-store" });
+  } catch (_) {
+    throw new Error("Cannot reach eon-web. Check that it is still running.");
   }
-}
-
-let journalCursors = [];
-let journalCurrent = 0;
-let journalNext = null;
-
-async function loadJournal(from) {
-  const limit = el("journal-limit").value;
-  const errorBox = el("journal-error");
-  show("", errorBox);
-  try {
-    const page = await api("/api/journal?from=" + from + "&limit=" + limit);
-    journalCurrent = from;
-    journalNext = page.next_from;
-    replaceRows(el("journal-rows"), page.frames.map((f) => row([
-      cell(f.seq, "mono"),
-      cell(f.mono_ts_ns, "mono"),
-      cell(f.flags, "mono"),
-      cell(f.bytes, "mono"),
-      cell(f.preview, "mono"),
-    ])));
-    el("journal-prev").disabled = journalCursors.length === 0;
-    el("journal-next").disabled = journalNext === null || journalNext === undefined;
-    el("journal-from").value = from;
-  } catch (err) {
-    show(err.message, errorBox);
-  }
-}
-
-async function loadProfiles() {
-  try {
-    const profiles = await api("/api/profiles");
-    replaceRows(el("profile-rows"), profiles.map((p) => row([
-      cell(p.profile, "mono"),
-      cell(p.lock_key, "mono"),
-      cell(p.min_device_memory_gb, "mono"),
-    ])));
-  } catch (err) {
-    show(err.message, el("profile-error"));
-  }
-}
-
-async function selectProfile() {
-  const errorBox = el("profile-error");
-  const result = el("profile-result");
-  show("", errorBox);
-  show("", result);
-  try {
-    const memory = encodeURIComponent(el("profile-memory").value);
-    const profile = await api("/api/profiles/select?memory_gb=" + memory);
-    show("Selected " + profile.profile + " (lock key " + profile.lock_key + ")", result);
-  } catch (err) {
-    show(err.message, errorBox);
-  }
-}
-
-async function runCyber() {
-  const errorBox = el("cyber-error");
-  show("", errorBox);
-  try {
-    const report = await postJson("/api/cyber/review", {
-      language: el("cyber-lang").value,
-      source: el("cyber-source").value,
-    });
-    replaceRows(el("cyber-rows"), report.checks.map((c) => {
-      const result = c.observed ? "observed" : "unverified";
-      const resultCls = c.observed ? "warn" : "ok";
-      const where = c.observed ? "bytes " + c.range[0] + " to " + c.range[1] : c.gap;
-      return row([
-        cell(c.rule, "mono"),
-        cell(c.cwe, "mono"),
-        cell(result, resultCls),
-        cell(where, "mono"),
-        cell(c.recommendation),
-      ]);
-    }));
-  } catch (err) {
-    show(err.message, errorBox);
-  }
-}
-
-async function runDiff() {
-  const errorBox = el("diff-error");
-  show("", errorBox);
-  try {
-    const view = await postJson("/api/review/diff", {
-      language: el("diff-lang").value,
-      old: el("diff-old").value,
-      new: el("diff-new").value,
-    });
-    const name = (blocks, index) => (index === null || index === undefined ? "" : blocks[index].name + " (line " + blocks[index].start_line + ")");
-    const clsFor = { unchanged: "ok", changed: "warn", added: "ok", removed: "bad" };
-    replaceRows(el("diff-rows"), view.pairings.map((p) => row([
-      cell(p.status, clsFor[p.status]),
-      cell(name(view.old, p.old), "mono"),
-      cell(name(view.new, p.new), "mono"),
-    ])));
-  } catch (err) {
-    show(err.message, errorBox);
-  }
-}
-
-function parseEdges(text) {
-  return text.split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => {
-      const parts = line.split(/\s+/).map(Number);
-      if (parts.length !== 2 || parts.some((n) => !Number.isInteger(n) || n < 0)) {
-        throw new Error("bad edge line: " + line);
-      }
-      return parts;
-    });
-}
-
-function drawLayout(layout, nodeCount) {
-  const svg = el("canvas-svg");
-  const ns = "http://www.w3.org/2000/svg";
-  const maxRank = Math.max(0, ...layout.rank);
-  const maxSlot = Math.max(0, ...layout.slot);
-  const xStep = 120;
-  const yStep = 80;
-  const margin = 40;
-  const width = margin * 2 + maxSlot * xStep;
-  const height = margin * 2 + maxRank * yStep;
-  svg.setAttribute("viewBox", "0 0 " + Math.max(640, width) + " " + Math.max(360, height));
-  const pos = (rank, slot) => [margin + slot * xStep, margin + rank * yStep];
-  const nodes = [];
-  for (let i = 0; i < nodeCount; i++) {
-    const [x, y] = pos(layout.rank[i], layout.slot[i]);
-    const g = document.createElementNS(ns, "g");
-    const c = document.createElementNS(ns, "circle");
-    c.setAttribute("cx", x);
-    c.setAttribute("cy", y);
-    c.setAttribute("r", 18);
-    c.setAttribute("fill", "#1d2230");
-    c.setAttribute("stroke", "#6ea8fe");
-    const t = document.createElementNS(ns, "text");
-    t.setAttribute("x", x);
-    t.setAttribute("y", y + 5);
-    t.setAttribute("text-anchor", "middle");
-    t.setAttribute("fill", "#e6e8ee");
-    t.textContent = String(i);
-    g.append(c, t);
-    nodes.push(g);
-  }
-  const edges = layout.edge_paths.map((path) => {
-    const p = document.createElementNS(ns, "polyline");
-    p.setAttribute("points", path.map(([r, s]) => pos(r, s).join(",")).join(" "));
-    p.setAttribute("fill", "none");
-    p.setAttribute("stroke", "#8b93a7");
-    p.setAttribute("stroke-width", "1.5");
-    return p;
-  });
-  svg.replaceChildren(...edges, ...nodes);
-}
-
-async function runLayout() {
-  const errorBox = el("canvas-error");
-  show("", errorBox);
-  try {
-    const nodes = Number(el("canvas-nodes").value);
-    const edges = parseEdges(el("canvas-edges").value);
-    const layout = await postJson("/api/canvas/layout", { nodes, edges });
-    show("Ranks: " + (Math.max(-1, ...layout.rank) + 1) + ", crossings: " + layout.crossings, el("canvas-info"));
-    drawLayout(layout, nodes);
-  } catch (err) {
-    show(err.message, errorBox);
-  }
-}
-
-let ttsUrl = null;
-
-async function runTts() {
-  const errorBox = el("tts-error");
-  const audio = el("tts-audio");
-  show("", errorBox);
-  try {
-    const response = await api("/api/voice/tts", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: el("tts-text").value, speed: Number(el("tts-speed").value) }),
-    });
-    const blob = await response.blob();
-    if (ttsUrl) URL.revokeObjectURL(ttsUrl);
-    ttsUrl = URL.createObjectURL(blob);
-    audio.src = ttsUrl;
-    audio.style.display = "block";
-    audio.play().catch(() => {});
-  } catch (err) {
-    show(err.message, errorBox);
-  }
-}
-
-let recording = null;
-
-async function toggleAsr() {
-  const button = el("asr-toggle");
-  const state = el("asr-state");
-  const errorBox = el("asr-error");
-  show("", errorBox);
-  if (recording) {
-    const { context, stream, processor, chunks } = recording;
-    recording = null;
-    processor.disconnect();
-    stream.getTracks().forEach((t) => t.stop());
-    await context.close();
-    button.textContent = "Start recording";
-    show("Transcribing", state);
-    const total = chunks.reduce((n, c) => n + c.length, 0);
-    const pcm = new Float32Array(total);
-    let offset = 0;
-    chunks.forEach((c) => { pcm.set(c, offset); offset += c.length; });
+  if (!res.ok) {
+    let message = res.statusText || "request failed";
     try {
-      const body = await api("/api/voice/asr", {
-        method: "POST",
-        headers: { "content-type": "application/octet-stream" },
-        body: pcm.buffer,
-      });
-      el("asr-text").textContent = body.text || "(no speech)";
-      show("", state);
-    } catch (err) {
-      show(err.message, errorBox);
-      show("", state);
+      message = (await res.json()).error || message;
+    } catch (_) {
+      /* the body is not JSON, keep the status text */
     }
-    return;
+    throw new Error(`${res.status}: ${message}`);
   }
+  return blob ? res.blob() : res.json();
+}
+
+const get = (path) => request("GET", path);
+const post = (path, json) => request("POST", path, { json });
+
+function msg(text, kind = "") {
+  return h("p", { class: kind ? `msg ${kind}` : "msg", role: kind === "err" ? "alert" : "status", text });
+}
+
+function region() {
+  return h("div", { class: "region", "aria-live": "polite" });
+}
+
+async function run(box, work) {
+  box.replaceChildren(h("p", { class: "loading", text: "Working…" }));
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
-    const context = new AudioContext({ sampleRate: 16000 });
-    const source = context.createMediaStreamSource(stream);
-    const processor = context.createScriptProcessor(4096, 1, 1);
-    const chunks = [];
-    const limit = 60 * 16000;
-    let captured = 0;
-    processor.onaudioprocess = (event) => {
-      if (captured >= limit) return;
-      const data = event.inputBuffer.getChannelData(0);
-      const copy = new Float32Array(data);
-      chunks.push(copy);
-      captured += copy.length;
-    };
-    source.connect(processor);
-    processor.connect(context.destination);
-    recording = { context, stream, processor, chunks };
-    button.textContent = "Stop and transcribe";
-    show("Recording (up to 60 s)", state);
-  } catch (err) {
-    show(err.message, errorBox);
+    box.replaceChildren(await work());
+  } catch (error) {
+    box.replaceChildren(msg(error.message, "err"));
   }
 }
 
-window.addEventListener("hashchange", activate);
-el("journal-load").addEventListener("click", () => {
-  journalCursors = [];
-  loadJournal(Number(el("journal-from").value) || 0);
-});
-el("journal-next").addEventListener("click", () => {
-  if (journalNext === null || journalNext === undefined) return;
-  journalCursors.push(journalCurrent);
-  loadJournal(journalNext);
-});
-el("journal-prev").addEventListener("click", () => {
-  if (journalCursors.length === 0) return;
-  loadJournal(journalCursors.pop());
-});
-el("profile-select").addEventListener("click", selectProfile);
-el("cyber-run").addEventListener("click", runCyber);
-el("diff-run").addEventListener("click", runDiff);
-el("canvas-run").addEventListener("click", runLayout);
-el("tts-run").addEventListener("click", runTts);
-el("asr-toggle").addEventListener("click", toggleAsr);
+function button(text, onclick, primary = false) {
+  return h("button", { type: "button", class: primary ? "primary" : undefined, text, onclick });
+}
 
-api("/api/status").then((status) => {
-  if (!status.voice.asr) el("asr-state").textContent = "ASR not configured on this server";
-  if (!status.voice.tts) el("tts-error").textContent = "TTS not configured on this server";
-}).catch(() => {});
+function field(label, control, wide = false) {
+  return h("label", { class: wide ? "field wide" : "field" }, h("span", { text: label }), control);
+}
 
-activate();
+function input(props) {
+  return h("input", props);
+}
+
+function textarea(value, props = {}) {
+  const node = h("textarea", { spellcheck: "false", rows: 8, ...props });
+  node.value = value;
+  return node;
+}
+
+function select(options, value, props = {}) {
+  return h("select", props, options.map((o) => h("option", { value: o, text: o, selected: o === value })));
+}
+
+function table(headers, rows, empty = "Nothing here yet.") {
+  const body = rows.length
+    ? rows.map((cells) =>
+        h("tr", {}, cells.map((cell) => {
+          const shown = cell ?? "none";
+          return h("td", { class: typeof shown === "number" ? "num" : undefined }, typeof shown === "number" ? String(shown) : shown);
+        })))
+    : [h("tr", {}, h("td", { class: "empty", colspan: headers.length, text: empty }))];
+  return h("div", { class: "table-wrap" },
+    h("table", {},
+      h("thead", {}, h("tr", {}, headers.map((t) => h("th", { scope: "col", text: t })))),
+      h("tbody", {}, body)));
+}
+
+function kv(pairs) {
+  return h("dl", { class: "kv" }, pairs.map(([key, value]) => [h("dt", { text: key }), h("dd", {}, value ?? "none")]));
+}
+
+function mono(text) {
+  return h("span", { class: "mono", text: String(text) });
+}
+
+function page(title, lede, ...kids) {
+  return h("div", {}, h("h1", { text: title }), h("p", { class: "lede", text: lede }), ...kids);
+}
+
+function live(load) {
+  const box = region();
+  const refresh = button("Refresh", () => run(box, load));
+  run(box, load);
+  return [h("div", { class: "toolbar" }, refresh), box];
+}
+
+function loader(path, render) {
+  return () => render(get(path));
+}
+
+function viewOverview() {
+  return page("Overview", "Live state of each Eon subsystem. Open a section for details and controls.", ...live(async () => {
+    const [status, sensor, daemon, mesh, kernel, caps] = await Promise.all([
+      get("/api/status"),
+      get("/api/sensor"),
+      get("/api/daemon"),
+      get("/api/mesh"),
+      get("/api/kernel"),
+      get("/api/capabilities"),
+    ]);
+    const rows = [
+      ["Journal", `${status.journal.frames} frames in ${status.journal.segments} segments, last seq ${status.journal.last_seq ?? "none"}`, "journal"],
+      ["Kernel", kernel.workflow ? `Workflow ${kernel.workflow}, epoch ${kernel.epoch}, ${kernel.tasks.length} tasks` : "No workflow submitted", "kernel"],
+      ["Sensor", sensor.attached ? "Attached" : "Detached", "sensor"],
+      ["Daemon", daemon.configured ? (daemon.error ? `Unreachable: ${daemon.error}` : daemon.status) : "No socket configured", "daemon"],
+      ["Capabilities", `${caps.tools_registered} tools registered`, "capabilities"],
+      ["Mesh", `Version ${mesh.version}, ${mesh.entries.length} local entries`, "mesh"],
+      ["Voice", `TTS ${status.voice.tts ? "configured" : "not configured"}, ASR ${status.voice.asr ? "configured" : "not configured"}`, "voice"],
+    ];
+    return table(["Subsystem", "State", ""], rows.map(([name, state, route]) => [name, state, h("a", { href: `#${route}`, text: "Open" })]));
+  }));
+}
+
+function viewJournal() {
+  let from = 0;
+  let next = null;
+  const cursors = [];
+  const box = region();
+  const newer = button("Newer", () => {
+    from = cursors.pop();
+    load();
+  });
+  const older = button("Older", () => {
+    if (next === null) return;
+    cursors.push(from);
+    from = next;
+    load();
+  });
+  const size = select(["25", "50", "100", "500"], "50", {
+    "aria-label": "Frames per page",
+    onchange: () => {
+      from = 0;
+      cursors.length = 0;
+      load();
+    },
+  });
+  function load() {
+    return run(box, async () => {
+      const result = await get(`/api/journal?from=${from}&limit=${size.value}`);
+      next = result.next_from;
+      older.disabled = next === null;
+      newer.disabled = cursors.length === 0;
+      return table(
+        ["Seq", "Monotonic ns", "Flags", "Bytes", "Preview"],
+        result.frames.map((f) => [f.seq, f.mono_ts_ns, f.flags, f.bytes, mono(f.preview)]),
+        "No frames at or after this cursor.",
+      );
+    });
+  }
+  load();
+  return page(
+    "Journal",
+    "Every frame appended to the durable journal, oldest first. One frame is one appended batch. Previews are stored bytes shown as text.",
+    h("div", { class: "toolbar" }, field("Per page", size), newer, older, button("Refresh", () => load())),
+    box,
+  );
+}
+
+function viewKernel() {
+  const state = region();
+  const out = region();
+  const stateView = (view) =>
+    h("div", {},
+      kv([
+        ["Workflow", view.workflow ?? "None submitted"],
+        ["Epoch", view.epoch],
+        ["CPU capacity", `${view.cpu_capacity} cores`],
+      ]),
+      h("h3", { text: "Tasks" }),
+      table(["Label", "Task", "State", "Depends on"],
+        view.tasks.map((t) => [t.label, mono(t.task), t.state, t.depends_on.length ? t.depends_on.join(", ") : "None"]),
+        "No tasks submitted."),
+      h("h3", { text: "Pending dispatches" }),
+      table(["Label", "Lease", "Epoch", "Valid"],
+        view.pending.map((d) => [d.label, mono(d.lease), d.epoch, d.valid ? "Yes" : "No"]),
+        "Nothing is waiting for an outcome."));
+  const act = (work, okText) => run(out, async () => {
+    const result = await work();
+    state.replaceChildren(stateView(result.view ?? result));
+    return msg(result.message ?? okText, "ok");
+  });
+  const workflow = textarea(SAMPLE_WORKFLOW, { rows: 12, "aria-label": "Workflow JSON" });
+  const label = input({ type: "text", "aria-label": "Task label", required: true });
+  const outcome = select(["succeeded", "failed", "uncertain"], "succeeded", { "aria-label": "Outcome" });
+  run(state, async () => stateView(await get("/api/kernel")));
+  return page(
+    "Kernel",
+    "Submit a workflow of labelled tasks. Tick queues tasks whose dependencies have finished. Nothing runs them here: you report each outcome with Finish. Capability and operation are labels that the scheduler records.",
+    h("div", { class: "toolbar" },
+      button("Refresh", () => run(state, async () => stateView(await get("/api/kernel")))),
+      button("Tick", () => act(() => post("/api/kernel/tick"), "Ticked.")),
+    ),
+    state,
+    h("section", { class: "panel" },
+      h("h2", { text: "Submit a workflow" }),
+      field("Workflow JSON", workflow, true),
+      h("div", { class: "toolbar" }, button("Submit workflow", () => act(() => post("/api/kernel/workflow", JSON.parse(workflow.value)), "Workflow submitted."), true)),
+    ),
+    h("section", { class: "panel" },
+      h("h2", { text: "Report an outcome" }),
+      h("div", { class: "form" },
+        field("Task label", label),
+        field("Outcome", outcome),
+        button("Finish", () => act(() => post("/api/kernel/finish", { label: label.value, outcome: outcome.value }), "Outcome recorded."), true)),
+    ),
+    h("section", { class: "panel" },
+      h("h2", { text: "Countermand" }),
+      h("p", { class: "lede", text: "Asks the scheduler to undo the current workflow. No compensator is attached here, so any completed task that needs undo is reported as undo failed." }),
+      button("Countermand", () => act(() => post("/api/kernel/countermand")), "")),
+    out,
+  );
+}
+
+function sensorState(view) {
+  return kv([
+    ["Attached", view.attached ? "Yes" : "No"],
+    ["fsync calls", view.fsync_calls],
+    ["Last error", view.last_error],
+  ]);
+}
+
+function viewSensor() {
+  const state = region();
+  const out = region();
+  const apply = (path, okText) => run(out, async () => {
+    state.replaceChildren(sensorState(await post(path)));
+    return msg(okText, "ok");
+  });
+  run(state, async () => sensorState(await get("/api/sensor")));
+  return page(
+    "Sensor",
+    "The eBPF fsync sensor counts fsync calls on this host. Attaching needs kernel privileges. If this environment lacks them, the error is shown unchanged.",
+    h("div", { class: "toolbar" },
+      button("Refresh", () => run(state, async () => sensorState(await get("/api/sensor")))),
+      button("Attach", () => apply("/api/sensor/attach", "Sensor attached."), true),
+      button("Detach", () => apply("/api/sensor/detach", "Sensor detached."))),
+    state,
+    out,
+  );
+}
+
+function viewDaemon() {
+  return page(
+    "Daemon",
+    "Status read from the eon-daemon socket given with --daemon-socket. This page only reads the status.",
+    ...live(loader("/api/daemon", async (view) => {
+      const daemon = await view;
+      if (!daemon.configured) return msg("No daemon socket is configured. Start eon-web with --daemon-socket PATH.");
+      return kv([
+        ["Status", daemon.status],
+        ["Error", daemon.error],
+      ]);
+    })),
+  );
+}
+
+function viewCapabilities() {
+  return page(
+    "Capabilities",
+    "Tool registry state. Tools run only through an allowlist with durable approvals, which this server does not configure.",
+    ...live(loader("/api/capabilities", async (view) => {
+      const caps = await view;
+      return h("div", {},
+        kv([["Tools registered", caps.tools_registered]]),
+        h("p", { class: "lede", text: caps.note }));
+    })),
+  );
+}
+
+function viewProfiles() {
+  const out = region();
+  const memory = input({ type: "number", min: "0", step: "0.5", "aria-label": "Device memory in GB" });
+  return page(
+    "Model profiles",
+    "Speech and language model profiles, and the lock key that each one uses.",
+    ...live(loader("/api/profiles", async (view) => {
+      const profiles = await view;
+      return table(
+        ["Profile", "Lock key", "Minimum device memory (GB)"],
+        profiles.map((p) => [mono(p.profile), mono(p.lock_key), p.min_device_memory_gb]),
+        "No profiles are defined.",
+      );
+    })),
+    h("section", { class: "panel" },
+      h("h2", { text: "Select for device memory" }),
+      h("div", { class: "form" },
+        field("Device memory (GB)", memory),
+        button("Select", () => run(out, async () => {
+          const p = await get(`/api/profiles/select?memory_gb=${encodeURIComponent(memory.value)}`);
+          return kv([
+            ["Profile", p.profile],
+            ["Lock key", mono(p.lock_key)],
+            ["Minimum device memory (GB)", p.min_device_memory_gb],
+          ]);
+        }), true)),
+      out),
+  );
+}
+
+function viewMesh() {
+  const list = region();
+  const out = region();
+  const listView = (mesh) =>
+    h("div", {},
+      kv([["Version", mono(mesh.version)]]),
+      table(["Key", "Value"],
+        mesh.entries.map((e) => [mono(e.key), mono(e.value)]),
+        "No values were written on this replica."));
+  run(list, async () => listView(await get("/api/mesh")));
+  const key = input({ type: "text", "aria-label": "Key", required: true });
+  const value = input({ type: "text", "aria-label": "Value" });
+  const lookup = input({ type: "text", "aria-label": "Key to read" });
+  const state = textarea("", { rows: 6, "aria-label": "Mesh state as hex" });
+  return page(
+    "Mesh state",
+    "A replicated key-value store for this process. Only keys written on this replica are listed. Keys learned from other replicas can be read by name.",
+    h("div", { class: "toolbar" }, button("Refresh", () => run(list, async () => listView(await get("/api/mesh"))))),
+    list,
+    h("section", { class: "panel" },
+      h("h2", { text: "Write a value" }),
+      h("div", { class: "form" },
+        field("Key", key),
+        field("Value", value),
+        button("Set value", () => run(out, async () => {
+          const mesh = await post("/api/mesh/set", { key: key.value, value: value.value });
+          list.replaceChildren(listView(mesh));
+          return msg(`Stored ${key.value}.`, "ok");
+        }), true))),
+    h("section", { class: "panel" },
+      h("h2", { text: "Read a value" }),
+      h("div", { class: "form" },
+        field("Key", lookup),
+        button("Read", () => run(out, async () => {
+          const entry = await get(`/api/mesh/get?key=${encodeURIComponent(lookup.value)}`);
+          return h("pre", { class: "out", text: `${entry.key} = ${entry.value}` });
+        })))),
+    h("section", { class: "panel" },
+      h("h2", { text: "Export and merge state" }),
+      h("p", { class: "lede", text: "Export writes this replica's state as hex. Merge applies hex state from another replica." }),
+      field("State (hex)", state, true),
+      h("div", { class: "toolbar" },
+        button("Export state", () => run(out, async () => {
+          const result = await get("/api/mesh/export");
+          state.value = result.hex;
+          return msg(`Exported ${result.hex.length / 2} bytes.`, "ok");
+        })),
+        button("Merge state", () => run(out, async () => {
+          list.replaceChildren(listView(await post("/api/mesh/apply", { hex: state.value })));
+          return msg("Merged.", "ok");
+        }), true))),
+    out,
+  );
+}
+
+function viewRecall() {
+  const out = region();
+  const query = input({ type: "text", "aria-label": "Query", required: true });
+  const limit = select(["1", "3", "5", "10", "20"], "5", { "aria-label": "Maximum results" });
+  return page(
+    "Recall",
+    "Searches the memory file given with --memory. Recalled text is stored data. It is shown as plain text and never run.",
+    h("section", { class: "panel" },
+      h("div", { class: "form" },
+        field("Query", query, true),
+        field("Results", limit),
+        button("Search", () => run(out, async () => {
+          const hits = await post("/api/recall", { query: query.value, limit: Number(limit.value) });
+          if (!hits.length) return msg("No matches.");
+          return hits.map((hit) =>
+            h("article", { class: "hit" },
+              h("header", {},
+                mono(`${hit.kind} ${hit.id}`),
+                h("span", { class: "muted", text: `score ${hit.score.toFixed(3)}` }),
+                h("span", { class: "muted", text: `provenance ${hit.provenance}` })),
+              h("pre", { class: "out", text: hit.text })));
+        }), true)),
+      out),
+  );
+}
+
+function viewCyber() {
+  const out = region();
+  const language = select(["rust", "python"], "rust", { "aria-label": "Language" });
+  const source = textarea(SAMPLE_RUST, { rows: 14, "aria-label": "Source" });
+  return page(
+    "Cyber review",
+    "Static checks for unsafe patterns in one source file. Each row is one rule. Observed means the rule's pattern appeared in the source.",
+    h("section", { class: "panel" },
+      h("div", { class: "form" }, field("Language", language)),
+      field("Source", source, true),
+      h("div", { class: "toolbar" }, button("Review", () => run(out, async () => {
+        const review = await post("/api/cyber/review", { language: language.value, source: source.value });
+        return table(
+          ["Rule", "CWE", "Recommendation", "Observed", "Span", "Gap"],
+          review.checks.map((c) => [
+            c.rule,
+            c.cwe,
+            c.recommendation,
+            c.observed ? "Yes" : "No",
+            c.range ? `${c.range[0]} to ${c.range[1]}` : null,
+            c.gap,
+          ]),
+          "No checks ran.",
+        );
+      }), true)),
+      out),
+  );
+}
+
+function diffResult(diff) {
+  const rows = diff.pairings.map((p) => {
+    const before = p.old === null ? null : diff.old[p.old];
+    const after = p.new === null ? null : diff.new[p.new];
+    return [
+      p.status,
+      before ? `${before.name} (line ${before.start_line})` : null,
+      after ? `${after.name} (line ${after.start_line})` : null,
+    ];
+  });
+  const changed = diff.pairings
+    .filter((p) => p.status === "changed")
+    .map((p) => {
+      const before = diff.old[p.old];
+      const after = diff.new[p.new];
+      return h("details", {},
+        h("summary", { text: `${before.name}: before and after` }),
+        h("div", { class: "diff-cols" },
+          h("pre", { class: "out", text: before.text }),
+          h("pre", { class: "out", text: after.text })));
+    });
+  return h("div", {}, table(["Status", "Before", "After"], rows, "No functions found."), changed);
+}
+
+function viewDiff() {
+  const out = region();
+  const language = select(["rust", "python"], "rust", { "aria-label": "Language" });
+  const before = textarea(SAMPLE_OLD, { rows: 12, "aria-label": "Before" });
+  const after = textarea(SAMPLE_NEW, { rows: 12, "aria-label": "After" });
+  return page(
+    "Diff review",
+    "Pairs the functions in two versions of a file and marks each one as unchanged, changed, added, or removed.",
+    h("section", { class: "panel" },
+      h("div", { class: "form" }, field("Language", language)),
+      h("div", { class: "diff-cols" }, field("Before", before, true), field("After", after, true)),
+      h("div", { class: "toolbar" }, button("Compare", () => run(out, async () => {
+        return diffResult(await post("/api/review/diff", { language: language.value, old: before.value, new: after.value }));
+      }), true)),
+      out),
+  );
+}
+
+function layoutResult(layout) {
+  const X = (rank) => 28 + rank * 84;
+  const Y = (slot) => 28 + slot * 56;
+  const points = layout.edge_paths.flat();
+  const maxRank = Math.max(0, ...layout.rank, ...points.map((p) => p[0]));
+  const maxSlot = Math.max(0, ...layout.slot, ...points.map((p) => p[1]));
+  const canvas = svg("svg", {
+    class: "graph",
+    viewBox: `0 0 ${X(maxRank) + 40} ${Y(maxSlot) + 40}`,
+    role: "img",
+    "aria-label": "Layered graph layout",
+  });
+  for (const path of layout.edge_paths) {
+    canvas.append(svg("polyline", { class: "edge", points: path.map(([r, s]) => `${X(r)},${Y(s)}`).join(" ") }));
+  }
+  layout.rank.forEach((rank, i) => {
+    const cx = X(rank);
+    const cy = Y(layout.slot[i]);
+    canvas.append(svg("circle", { class: "node", cx, cy, r: 14 }));
+    canvas.append(svg("text", { class: "node-label", x: cx, y: cy, "text-anchor": "middle", "dominant-baseline": "central" }, i));
+  });
+  return h("div", {},
+    h("div", { class: "graph-wrap" }, canvas),
+    kv([
+      ["Nodes", layout.rank.length],
+      ["Layers", maxRank + 1],
+      ["Crossings", layout.crossings],
+    ]));
+}
+
+function viewCanvas() {
+  const out = region();
+  const count = input({ type: "number", min: "1", max: "256", value: "4", "aria-label": "Node count" });
+  const edges = textarea("0 1\n0 2\n1 3\n2 3", { rows: 6, "aria-label": "Edges, two node indices per line" });
+  return page(
+    "Canvas layout",
+    "Places nodes in layers and routes edges between them. This page only computes the layout. Nothing is written back.",
+    h("section", { class: "panel" },
+      h("div", { class: "form" }, field("Nodes", count)),
+      field("Edges, two node indices per line", edges, true),
+      h("div", { class: "toolbar" }, button("Layout", () => run(out, async () => {
+        const nodes = Number(count.value);
+        const pairs = edges.value
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => {
+            const parts = line.split(/\s+/).map(Number);
+            if (parts.length !== 2 || parts.some((n) => !Number.isInteger(n) || n < 0 || n >= nodes)) {
+              throw new Error(`Bad edge "${line}". Use two node indices below ${nodes}.`);
+            }
+            return parts;
+          });
+        return layoutResult(await post("/api/canvas/layout", { nodes, edges: pairs }));
+      }), true)),
+      out),
+  );
+}
+
+function viewVoice() {
+  const status = region();
+  const speech = region();
+  const transcript = region();
+  let audioUrl = null;
+
+  run(status, async () => {
+    const s = await get("/api/status");
+    return kv([
+      ["Text to speech", s.voice.tts ? "Configured" : "Not configured (start with --tts-model and --tts-voice)"],
+      ["Speech to text", s.voice.asr ? "Configured" : "Not configured (start with --asr-dir)"],
+    ]);
+  });
+
+  const text = textarea("Eon is online.", { rows: 4, "aria-label": "Text to speak" });
+  const speed = input({ type: "range", min: "0.5", max: "2", step: "0.1", value: "1", "aria-label": "Speed" });
+  const speedLabel = h("output", { text: "1.0x" });
+  speed.addEventListener("input", () => {
+    speedLabel.textContent = `${Number(speed.value).toFixed(1)}x`;
+  });
+
+  const ttsPanel = h("section", { class: "panel" },
+    h("h2", { text: "Speak" }),
+    field("Text", text, true),
+    h("div", { class: "form" }, field("Speed", speed), speedLabel,
+      button("Speak", () => run(speech, async () => {
+        const wav = await request("POST", "/api/voice/tts", { json: { text: text.value, speed: Number(speed.value) }, blob: true });
+        if (audioUrl) URL.revokeObjectURL(audioUrl);
+        audioUrl = URL.createObjectURL(wav);
+        return h("div", {},
+          h("audio", { controls: true, src: audioUrl }),
+          h("a", { href: audioUrl, download: "eon-speech.wav", text: "Download WAV" }));
+      }), true)),
+    speech,
+  );
+
+  async function pcm16k(blob) {
+    const decodeContext = new AudioContext();
+    let decoded;
+    try {
+      decoded = await decodeContext.decodeAudioData(await blob.arrayBuffer());
+    } finally {
+      await decodeContext.close();
+    }
+    if (decoded.duration <= 0) throw new Error("The clip has no audio.");
+    if (decoded.duration > 60) throw new Error("The clip is longer than 60 seconds.");
+    const offline = new OfflineAudioContext(1, Math.ceil(decoded.duration * 16000), 16000);
+    const source = offline.createBufferSource();
+    source.buffer = decoded;
+    source.connect(offline.destination);
+    source.start();
+    return (await offline.startRendering()).getChannelData(0);
+  }
+
+  const transcribe = (blob) => run(transcript, async () => {
+    const samples = await pcm16k(blob);
+    const result = await request("POST", "/api/voice/asr", {
+      raw: new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength),
+    });
+    return h("pre", { class: "out", text: result.text || "No text was returned." });
+  });
+
+  let recorder = null;
+  let stream = null;
+  let timer = null;
+  let chunks = [];
+  const record = button("Record", async () => {
+    if (recorder) {
+      if (recorder.state === "recording") recorder.stop();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      transcript.replaceChildren(msg("This browser cannot record audio here. Use a file instead.", "err"));
+      return;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (error) {
+      transcript.replaceChildren(msg(`Microphone access failed: ${error.message}`, "err"));
+      return;
+    }
+    chunks = [];
+    const active = new MediaRecorder(stream);
+    recorder = active;
+    active.ondataavailable = (event) => {
+      if (event.data.size) chunks.push(event.data);
+    };
+    active.onstop = () => {
+      clearTimeout(timer);
+      const type = active.mimeType;
+      stream.getTracks().forEach((track) => track.stop());
+      recorder = null;
+      record.textContent = "Record";
+      transcribe(new Blob(chunks, { type }));
+    };
+    active.start();
+    record.textContent = "Stop";
+    timer = setTimeout(() => {
+      if (active.state === "recording") active.stop();
+    }, 60000);
+  });
+  const file = input({
+    type: "file",
+    accept: "audio/*",
+    "aria-label": "Audio file",
+    onchange: () => {
+      if (file.files[0]) transcribe(file.files[0]);
+    },
+  });
+
+  return page(
+    "Speech",
+    "Text to speech renders WAV audio. Speech to text takes a recording or a file of up to 60 seconds, resampled to 16 kHz in the browser.",
+    status,
+    ttsPanel,
+    h("section", { class: "panel" },
+      h("h2", { text: "Transcribe" }),
+      h("div", { class: "form" }, record, field("Audio file", file)),
+      transcript),
+  );
+}
+
+const PAGES = {
+  overview: viewOverview,
+  journal: viewJournal,
+  kernel: viewKernel,
+  sensor: viewSensor,
+  daemon: viewDaemon,
+  capabilities: viewCapabilities,
+  profiles: viewProfiles,
+  mesh: viewMesh,
+  recall: viewRecall,
+  cyber: viewCyber,
+  diff: viewDiff,
+  canvas: viewCanvas,
+  voice: viewVoice,
+};
+
+function route() {
+  const name = Object.hasOwn(PAGES, location.hash.slice(1)) ? location.hash.slice(1) : "overview";
+  for (const link of document.querySelectorAll(".side a")) {
+    if (link.getAttribute("href") === `#${name}`) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
+  document.querySelector("#page").replaceChildren(PAGES[name]());
+}
+
+window.addEventListener("hashchange", route);
+route();
 </script>
 </body>
 </html>
